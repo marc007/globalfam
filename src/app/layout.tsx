@@ -21,7 +21,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${GeistSans.variable} font-sans antialiased`}> {/* GeistMono.variable was removed */}
         <AuthProvider>
-          <div className="relative flex min-h-screen flex-col bg-background">
+          <div className="relative flex min-h-screen flex-col bg-background p-2.5">
             <AppHeader />
             <main className="flex-1 container mx-auto p-12">{children}</main>
             <Toaster />
@@ -31,3 +31,4 @@ export default function RootLayout({
     </html>
   );
 }
+

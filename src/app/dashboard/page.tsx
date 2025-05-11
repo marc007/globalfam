@@ -50,7 +50,7 @@ export default function DashboardPage() {
     // throw new Error("Simulated server error"); // Uncomment to test error handling
   };
   
-  const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const mapsApiKey = 'AIzaSyCLanYUNjQKgle7pga3nRgOdkuWALzOL6E'; /*process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;*/
 
   if (authLoading || !isClient) {
     return (

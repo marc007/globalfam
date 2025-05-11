@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
 // import { GeistMono } from 'geist/font/mono'; // Removed as per previous fix
@@ -22,7 +23,7 @@ export default function RootLayout({
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col bg-background">
             <AppHeader />
-            <main className="flex-1 container py-8">{children}</main>
+            <main className="flex-1 container mx-auto p-12">{children}</main>
             <Toaster />
           </div>
         </AuthProvider>

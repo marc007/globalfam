@@ -571,21 +571,26 @@ const SidebarMenuButton = React.forwardRef<
       return button
     }
 
+    let tooltipContentProps: React.ComponentProps<typeof TooltipContent>
     if (typeof tooltip === "string") {
-      tooltip = {
-        children: tooltip,
-      }
+      tooltipContentProps = { children: tooltip }
+    } else {
+      tooltipContentProps = tooltip
     }
+    
+    // Conditionally render TooltipContent: only if sidebar is collapsed and not on mobile
+    const showTooltip = state === "collapsed" && !isMobile;
 
     return (
       <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent
-          side="right"
-          align="center"
-          hidden={state !== "collapsed" || isMobile}
-          {...tooltip}
-        />
+        {showTooltip && (
+          <TooltipContent
+            side="right"
+            align="center"
+            {...tooltipContentProps}
+          />
+        )}
       </Tooltip>
     )
   }

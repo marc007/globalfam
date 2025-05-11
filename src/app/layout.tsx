@@ -6,9 +6,6 @@ import { Toaster } from '@/components/ui/toaster';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AuthProvider } from '@/contexts/AuthContext';
 
-const geistSans = GeistSans;
-const geistMono = GeistMono;
-
 export const metadata: Metadata = {
   title: 'GlobalFam - Connect with Friends',
   description: 'Keep track of your friends around the world with GlobalFam.',
@@ -21,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark"> {/* Apply dark theme by default */}
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col bg-background">
             <AppHeader />

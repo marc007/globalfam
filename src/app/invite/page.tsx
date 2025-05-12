@@ -10,9 +10,9 @@ import { Loader2, Mail, Link as LinkIcon, Copy, CheckCircle, Users } from 'lucid
 import { useToast } from '@/hooks/use-toast';
 import type { Invite } from '@/types';
 
-// Mock server action for generating invite
+// Mock server action for generating invite - to be replaced with Firebase logic
 async function generateInviteLink(userId: string): Promise<Invite> {
-  console.log(`Server Action: Generating invite for user ${userId}`);
+  console.log(`Mock Server Action: Generating invite for user ${userId}`);
   await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
   
   const newInvite: Invite = {
@@ -20,7 +20,7 @@ async function generateInviteLink(userId: string): Promise<Invite> {
     code: Math.random().toString(36).substring(2, 12).toUpperCase(),
     createdAt: new Date(),
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-    createdBy: userId,
+    createdBy: userId, // This should be user.uid
   };
   return newInvite;
 }
@@ -43,12 +43,12 @@ export default function InvitePage() {
   }, [user, isLoading, router]);
 
   const handleGenerateLink = async () => {
-    if (!user) return;
+    if (!user || !user.uid) return; // Check for user.uid
     setIsGenerating(true);
     setCopied(false);
     try {
-      const invite = await generateInviteLink(user.id);
-      const fullLink = `${window.location.origin}/join?code=${invite.code}`;
+      const invite = await generateInviteLink(user.uid); // Use user.uid
+      const fullLink = `${window.location.origin}/join?code=${invite.code}`; // TODO: Create /join page
       setInviteLink(fullLink);
       toast({
         title: "Invite Link Generated! 🔗",

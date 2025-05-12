@@ -11,7 +11,7 @@ import { Loader2, Users, Map as MapIcon, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
-// Mock data - replace with actual data fetching
+// Mock data - replace with actual data fetching from Firebase
 const MOCK_FRIENDS: Friend[] = [
   { id: '1', name: 'Alice Wonderland', avatarUrl: 'https://picsum.photos/seed/alice/200/200', location: { city: 'New York', country: 'USA', latitude: 40.7128, longitude: -74.0060 }, latestStatus: { id: 's1', userId: '1', content: 'Exploring Central Park today! 🌳', createdAt: new Date(Date.now() - 3600000 * 2) } },
   { id: '2', name: 'Bob The Explorer', avatarUrl: 'https://picsum.photos/seed/bob/200/200', location: { city: 'London', country: 'UK', latitude: 51.5074, longitude: -0.1278 }, latestStatus: { id: 's2', userId: '2', content: 'Just had amazing fish and chips! 🐟🍟', createdAt: new Date(Date.now() - 3600000 * 5) } },
@@ -34,23 +34,24 @@ export default function DashboardPage() {
     if (!authLoading && !user) {
       router.replace('/');
     } else if (user) {
-      // Simulate fetching friends data
+      // Simulate fetching friends data - TODO: Replace with Firebase call
       setFriends(MOCK_FRIENDS);
     }
   }, [user, authLoading, router]);
 
   const handlePostStatus = async (data: { content: string }): Promise<void> => {
-    // Server action simulation
-    console.log("Posting status:", data.content, "for user:", user?.id);
-    // In a real app, this would be a server action call.
-    // For demo, add it to the current user's "mock" data or a global mock status list.
-    // This won't persist or update friend cards unless you manage a global state for statuses.
-    // For simplicity, we just show a toast here.
+    // Server action simulation - TODO: Replace with Firebase call
+    if(!user || !user.uid) {
+        toast({title: "Error", description: "You must be logged in to post a status.", variant: "destructive"});
+        return;
+    }
+    console.log("Posting status:", data.content, "for user:", user.uid); // Use user.uid
+    
     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
     // throw new Error("Simulated server error"); // Uncomment to test error handling
   };
   
-  const mapsApiKey = 'AIzaSyCLanYUNjQKgle7pga3nRgOdkuWALzOL6E'; /*process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;*/
+  const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (authLoading || !isClient) {
     return (

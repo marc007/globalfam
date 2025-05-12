@@ -9,26 +9,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, UserCircle, MapPin, Edit3, LogOut } from 'lucide-react';
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
+import { doc, updateDoc, getFirestore } from 'firebase/firestore'; // Import Firestore functions
+import { useToast } from '@/hooks/use-toast';
 
-// Mock server action for updating location
-async function updateUserLocation(userId: string, location: UserLocation): Promise<void> {
-  console.log(`Server Action: Updating location for user ${userId} to`, location);
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  // In a real app, update the database here.
-  // For demo, we could update localStorage if user object is stored there or rely on AuthContext to refresh
-  
-  // Example of throwing an error:
-  // if (Math.random() < 0.3) {
-  //   throw new Error("Simulated server error during location update!");
-  // }
+
+// Server action replaced by client-side Firebase call
+async function updateUserLocationClient(userId: string, location: UserLocation): Promise<void> {
+  console.log(`Firebase: Updating location for user ${userId} to`, location);
+  const db = getFirestore();
+  const userDocRef = doc(db, "users", userId);
+  await updateDoc(userDocRef, {
+    currentLocation: location,
+    // Potentially add latitude/longitude here if geocoded
+  });
 }
 
 
 export default function ProfilePage() {
   const { user, isLoading, logout, setUser } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -38,15 +41,24 @@ export default function ProfilePage() {
   }, [user, isLoading, router]);
 
   const handleUpdateLocation = async (data: UserLocation) => {
-    if (!user) return;
-    await updateUserLocation(user.id, data);
-    // Update user in AuthContext (or refetch user data)
-    setUser(prevUser => prevUser ? ({ ...prevUser, currentLocation: data }) : null);
-    // If user data is stored in localStorage, update it there too
-    const storedUser = localStorage.getItem('globalfam-user');
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      localStorage.setItem('globalfam-user', JSON.stringify({ ...parsedUser, currentLocation: data }));
+    if (!user || !user.uid) return;
+    setIsUpdatingLocation(true);
+    try {
+      await updateUserLocationClient(user.uid, data);
+      setUser(prevUser => prevUser ? ({ ...prevUser, currentLocation: data }) : null);
+      toast({
+        title: "Location Updated!",
+        description: `Your location is now set to ${data.city}, ${data.country}.`,
+      });
+    } catch (error) {
+      console.error("Failed to update location:", error);
+      toast({
+        title: "Update Failed",
+        description: "Could not update your location. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingLocation(false);
     }
   };
   
@@ -83,7 +95,11 @@ export default function ProfilePage() {
 
       <div className="grid md:grid-cols-2 gap-8 items-start">
         <section id="location">
-          <LocationForm currentLocation={user.currentLocation} onUpdateLocation={(data) => handleUpdateLocation(data)} />
+          <LocationForm 
+            currentLocation={user.currentLocation} 
+            onUpdateLocation={handleUpdateLocation} 
+            isPending={isUpdatingLocation}
+          />
         </section>
 
         <section>

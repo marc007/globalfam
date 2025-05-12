@@ -16,8 +16,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MapPin, Navigation } from "lucide-react";
 import type { UserLocation } from "@/types";
-import { useToast } from "@/hooks/use-toast";
-import { useState, useTransition } from "react";
+// Toast is now handled by the parent component (ProfilePage)
+// import { useToast } from "@/hooks/use-toast"; 
+// import { useState, useTransition } from "react"; // Transition is now handled by parent
 
 const locationFormSchema = z.object({
   city: z.string().min(2, { message: "City must be at least 2 characters." }).max(50),
@@ -28,12 +29,13 @@ type LocationFormValues = z.infer<typeof locationFormSchema>;
 
 interface LocationFormProps {
   currentLocation?: UserLocation;
-  onUpdateLocation: (data: UserLocation) => Promise<void>; // Server action
+  onUpdateLocation: (data: UserLocation) => Promise<void>;
+  isPending: boolean; // Added prop to control button state from parent
 }
 
-export function LocationForm({ currentLocation, onUpdateLocation }: LocationFormProps) {
-  const { toast } = useToast();
-  const [isPending, startTransition] = useTransition();
+export function LocationForm({ currentLocation, onUpdateLocation, isPending }: LocationFormProps) {
+  // const { toast } = useToast(); // Toast handled by parent
+  // const [isPending, startTransition] = useTransition(); // Transition handled by parent
 
   const form = useForm<LocationFormValues>({
     resolver: zodResolver(locationFormSchema),
@@ -41,26 +43,19 @@ export function LocationForm({ currentLocation, onUpdateLocation }: LocationForm
       city: currentLocation?.city || "",
       country: currentLocation?.country || "",
     },
+    // Reset form if currentLocation changes externally
+    // This might be useful if user data is refreshed elsewhere
+    values: { 
+      city: currentLocation?.city || "",
+      country: currentLocation?.country || "",
+    }
   });
 
+  // No startTransition here, onSubmit directly calls the prop
   async function onSubmit(data: LocationFormValues) {
-    startTransition(async () => {
-      try {
-        await onUpdateLocation(data); // This will be a server action
-        toast({
-          title: "Location Updated! 🌍",
-          description: `Your location is now set to ${data.city}, ${data.country}.`,
-          variant: "default",
-        });
-      } catch (error) {
-        toast({
-          title: "Uh oh! Something went wrong.",
-          description: "There was a problem updating your location. Please try again.",
-          variant: "destructive",
-        });
-        console.error("Failed to update location:", error);
-      }
-    });
+    // Error handling and toast messages are now responsibility of the parent component
+    // that calls onUpdateLocation.
+    await onUpdateLocation(data);
   }
 
   return (
@@ -81,7 +76,7 @@ export function LocationForm({ currentLocation, onUpdateLocation }: LocationForm
                 <FormItem>
                   <FormLabel className="text-accent">City</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Tokyo, Paris, New York" {...field} className="bg-input" />
+                    <Input placeholder="e.g., Tokyo, Paris, New York" {...field} className="bg-input" disabled={isPending}/>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -94,7 +89,7 @@ export function LocationForm({ currentLocation, onUpdateLocation }: LocationForm
                 <FormItem>
                   <FormLabel className="text-accent">Country</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Japan, France, USA" {...field} className="bg-input" />
+                    <Input placeholder="e.g., Japan, France, USA" {...field} className="bg-input" disabled={isPending}/>
                   </FormControl>
                   <FormMessage />
                 </FormItem>

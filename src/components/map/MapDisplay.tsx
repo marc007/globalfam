@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Friend } from '@/types';
@@ -51,19 +52,20 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
 export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
   const [markers, setMarkers] = useState<MapMarker[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
-  const [mapCenter, setMapCenter] = useState({ lat: 20, lng: 0 }); // Default global center
-  const [zoomLevel, setZoomLevel] = useState(2);
+  
+  // State for initial map center and zoom. These values will be used for defaultCenter/defaultZoom
+  // and will update if the 'friends' prop changes, re-keying the map.
+  const [initialCenter, setInitialCenter] = useState({ lat: 20, lng: 0 });
+  const [initialZoom, setInitialZoom] = useState(2);
 
   useEffect(() => {
     const fetchMarkers = async () => {
       const newMarkers: MapMarker[] = [];
       for (const friend of friends) {
         if (friend.location && friend.location.city && friend.location.country) {
-          // Use provided lat/lng if available
           if (friend.location.latitude && friend.location.longitude) {
              newMarkers.push({ ...friend, position: { lat: friend.location.latitude, lng: friend.location.longitude } });
           } else {
-            // Otherwise, mock geocode
             const coords = await geocodeLocation(friend.location.city, friend.location.country);
             if (coords) {
               newMarkers.push({ ...friend, position: coords });
@@ -73,12 +75,15 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
       }
       setMarkers(newMarkers);
       if (newMarkers.length > 0) {
-        // Basic auto-centering: average of coordinates or first marker
         const firstValidMarker = newMarkers.find(m => m.position);
         if (firstValidMarker) {
-          setMapCenter(firstValidMarker.position);
-          setZoomLevel(newMarkers.length === 1 ? 6 : 3);
+          setInitialCenter(firstValidMarker.position);
+          setInitialZoom(newMarkers.length === 1 ? 6 : 3);
         }
+      } else {
+        // Reset to a default world view if no markers
+        setInitialCenter({ lat: 20, lng: 0 });
+        setInitialZoom(2);
       }
     };
     fetchMarkers();
@@ -108,21 +113,19 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
     <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border">
       <APIProvider apiKey={apiKey}>
         <Map
-          defaultCenter={mapCenter}
-          defaultZoom={zoomLevel}
-          center={mapCenter}
-          zoom={zoomLevel}
+          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}`} // Re-mount map if initial center/zoom changes
+          defaultCenter={initialCenter}
+          defaultZoom={initialZoom}
+          // By removing 'center' and 'zoom' props here, we make them uncontrolled after initial render.
+          // The map will manage its own state for panning and zooming.
           gestureHandling={'greedy'}
-          disableDefaultUI={true}
-          mapId={'globalfam_map_dark'} // You can create a custom map style in Google Cloud Console
+          disableDefaultUI={true} // Keep this true if you want to selectively enable controls
+          mapId={'globalfam_map_dark'}
           className="h-full w-full"
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
-          zoomControl={true}
-           style={{ // Example dark mode styling (best done via mapId and cloud console)
-            // This is inline, better to use Cloud Styling with mapId
-          }}
+          zoomControl={true} // This enables zoom controls (+/- buttons)
         >
           {markers.map((marker) => (
             <AdvancedMarker
@@ -131,9 +134,9 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
               onClick={() => setSelectedMarker(marker)}
             >
               <Pin
-                background={'hsl(var(--primary))'} // Purple
-                borderColor={'hsl(var(--primary-foreground))'} // White
-                glyphColor={'hsl(var(--primary-foreground))'} // White
+                background={'hsl(var(--primary))'}
+                borderColor={'hsl(var(--primary-foreground))'}
+                glyphColor={'hsl(var(--primary-foreground))'}
               />
             </AdvancedMarker>
           ))}
@@ -159,7 +162,4 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
   );
 }
 
-// You'll need to add map styles to your globals.css or define them via Google Cloud Console if you want a fully themed map.
-// Example:
-// .gm-style .gm-style-iw-c { background-color: hsl(var(--card)) !important; color: hsl(var(--card-foreground)) !important; }
-// .gm-style .gm-style-iw-t::after { background-color: hsl(var(--card)) !important; }
+    

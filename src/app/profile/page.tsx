@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { LocationForm } from '@/components/forms/LocationForm';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, UserCircle, MapPin, Edit3, LogOut } from 'lucide-react';
+import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera } from 'lucide-react'; // Added Camera icon
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
-import { doc, updateDoc, getFirestore } from 'firebase/firestore'; // Import Firestore functions
+import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { uploadAvatar } from '@/lib/firebase/storage'; // Import storage function
+import { updateUserAvatarUrl } from '@/lib/firebase/users'; // Import user update function
 
 
 // Server action replaced by client-side Firebase call
@@ -31,6 +33,7 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false); // New state for avatar upload
 
 
   useEffect(() => {
@@ -61,6 +64,36 @@ export default function ProfilePage() {
       setIsUpdatingLocation(false);
     }
   };
+
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!user || !user.uid) return;
+
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const downloadURL = await uploadAvatar(user.uid, file);
+      await updateUserAvatarUrl(user.uid, downloadURL);
+
+      // Update user state in AuthContext
+      setUser(prevUser => prevUser ? ({ ...prevUser, avatarUrl: downloadURL }) : null);
+
+      toast({
+        title: "Avatar Updated!",
+        description: "Your profile picture has been updated.",
+      });
+    } catch (error) {
+      console.error("Failed to upload avatar:", error);
+      toast({
+        title: "Upload Failed",
+        description: "Could not update your avatar. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
   
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'GF';
@@ -83,10 +116,34 @@ export default function ProfilePage() {
   return (
     <div className="space-y-12">
       <section className="flex flex-col items-center text-center">
-        <Avatar className="h-32 w-32 mb-6 border-4 border-primary shadow-lg">
-          <AvatarImage src={user.avatarUrl} alt={user.name ?? 'User'} data-ai-hint="profile avatar" />
-          <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(user.name)}</AvatarFallback>
-        </Avatar>
+        {/* Avatar with upload functionality */}
+        <label htmlFor="avatar-upload" className="cursor-pointer relative group mb-6">
+          <Avatar className="h-32 w-32 border-4 border-primary shadow-lg relative">
+             {isUploadingAvatar ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10 rounded-full">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                </div>
+             ) : null}
+            <AvatarImage 
+              src={user.avatarUrl}
+              alt={user.name ?? 'User'}
+              className={isUploadingAvatar ? 'opacity-50' : ''} // Corrected className syntax
+            />
+            <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(user.name)}</AvatarFallback>
+          </Avatar>
+           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
+              <Camera className="h-8 w-8" />
+           </div>
+        </label>
+        <input 
+          id="avatar-upload" 
+          type="file" 
+          accept="image/*" 
+          onChange={handleAvatarChange}
+          className="hidden"
+          disabled={isUploadingAvatar}
+        />
+
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
           {user.name || 'Your Profile'}
         </h1>
@@ -119,10 +176,7 @@ export default function ProfilePage() {
                   <p className="text-muted-foreground">No location set. Update it using the form!</p>
                 )}
               </div>
-              {/* Placeholder for more settings */}
-              <Button variant="outline" className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground">
-                Change Avatar (Coming Soon)
-              </Button>
+              {/* The "Change Avatar (Coming Soon)" button is replaced by the clickable avatar */}
                <Button variant="destructive" onClick={logout} className="w-full">
                 <LogOut className="mr-2 h-4 w-4" /> Log Out
               </Button>

@@ -17,6 +17,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { MessageSquare, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useTransition } from "react";
+import { addStatusUpdate } from "@/lib/firebase/statusUpdates"; // Import the function
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 const statusFormSchema = z.object({
   content: z.string().min(1, { message: "Status can't be empty." }).max(280, { message: "Status must be 280 characters or less." }),
@@ -24,13 +26,15 @@ const statusFormSchema = z.object({
 
 type StatusFormValues = z.infer<typeof statusFormSchema>;
 
+// Removed onPostStatus prop
 interface StatusFormProps {
-  onPostStatus: (data: StatusFormValues) => Promise<void>; // Server action
+  // onPostStatus: (data: StatusFormValues) => Promise<void>; // Server action
 }
 
-export function StatusForm({ onPostStatus }: StatusFormProps) {
+export function StatusForm({ }: StatusFormProps) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
+  const { user } = useAuth(); // Corrected: Get the current user using 'user'
 
   const form = useForm<StatusFormValues>({
     resolver: zodResolver(statusFormSchema),
@@ -40,9 +44,21 @@ export function StatusForm({ onPostStatus }: StatusFormProps) {
   });
 
   async function onSubmit(data: StatusFormValues) {
+    // Corrected: Check for 'user' instead of 'currentUser'
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to post a status.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     startTransition(async () => {
       try {
-        await onPostStatus(data); // This will be a server action
+        // Call the Firebase function directly, use user.uid
+        await addStatusUpdate({ userId: user.uid, content: data.content });
+
         toast({
           title: "Status Posted! 🎉",
           description: "Your friends can now see your latest update.",
@@ -53,7 +69,7 @@ export function StatusForm({ onPostStatus }: StatusFormProps) {
         toast({
           title: "Oops! Something went wrong.",
           description: "There was a problem posting your status. Please try again.",
-          variant: "destructive",
+        variant: "destructive",
         });
         console.error("Failed to post status:", error);
       }

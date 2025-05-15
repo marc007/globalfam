@@ -116,6 +116,7 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
           key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}`} // Re-mount map if initial center/zoom changes
           defaultCenter={initialCenter}
           defaultZoom={initialZoom}
+          minZoom={2} // Prevent zooming out too far
           // By removing 'center' and 'zoom' props here, we make them uncontrolled after initial render.
           // The map will manage its own state for panning and zooming.
           gestureHandling={'greedy'}

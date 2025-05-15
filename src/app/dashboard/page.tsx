@@ -1,56 +1,120 @@
+
 "use client";
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { FriendList } from '@/components/friends/FriendList';
 import { MapDisplay } from '@/components/map/MapDisplay';
 import { StatusForm } from '@/components/forms/StatusForm';
-import type { Friend, StatusUpdate, UserLocation } from '@/types';
+import type { Friend } from '@/types'; // UserLocation is part of Friend via UserProfileData
 import { Loader2, Users, Map as MapIcon, MessageSquare } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+// import { useToast } from '@/hooks/use-toast'; // Not used directly anymore for status posting here
 
-// Mock data - replace with actual data fetching from Firebase
-const MOCK_FRIENDS: Friend[] = [
-  { id: '1', name: 'Alice Wonderland', avatarUrl: 'https://picsum.photos/seed/alice/200/200', location: { city: 'New York', country: 'USA', latitude: 40.7128, longitude: -74.0060 }, latestStatus: { id: 's1', userId: '1', content: 'Exploring Central Park today! 🌳', createdAt: new Date(Date.now() - 3600000 * 2) } },
-  { id: '2', name: 'Bob The Explorer', avatarUrl: 'https://picsum.photos/seed/bob/200/200', location: { city: 'London', country: 'UK', latitude: 51.5074, longitude: -0.1278 }, latestStatus: { id: 's2', userId: '2', content: 'Just had amazing fish and chips! 🐟🍟', createdAt: new Date(Date.now() - 3600000 * 5) } },
-  { id: '3', name: 'Charlie Nomad', avatarUrl: 'https://picsum.photos/seed/charlie/200/200', location: { city: 'Tokyo', country: 'Japan', latitude: 35.6895, longitude: 139.6917 }, latestStatus: { id: 's3', userId: '3', content: 'Lost in translation, but loving it! 🗼', createdAt: new Date(Date.now() - 3600000 * 24) } },
-  { id: '4', name: 'Diana Voyager', avatarUrl: 'https://picsum.photos/seed/diana/200/200', location: { city: 'Paris', country: 'France', latitude: 48.8566, longitude: 2.3522 } },
-  { id: '5', name: 'Evan Globetrotter', avatarUrl: 'https://picsum.photos/seed/evan/200/200', location: { city: 'Sydney', country: 'Australia', latitude: -33.8688, longitude: 151.2093 }, latestStatus: { id: 's4', userId: '5', content: 'Sun, surf, and Sydney Opera House! ☀️🌊', createdAt: new Date(Date.now() - 3600000 * 8) } },
-];
-
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
+import { listenToUserProfile } from '@/lib/firebase/users';
+import { listenToLatestUserStatus } from '@/lib/firebase/statusUpdates';
 
 export default function DashboardPage() {
-  const { user, isLoading: authLoading, logout } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
-  const { toast } = useToast();
-  const [isPending, startTransition] = useTransition();
+  // const { toast } = useToast(); // Not used directly anymore
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isClient, setIsClient] = useState(false);
+  const [activeListeners, setActiveListeners] = useState<(() => void)[]>([]);
 
   useEffect(() => {
     setIsClient(true);
     if (!authLoading && !user) {
       router.replace('/');
-    } else if (user) {
-      // Simulate fetching friends data - TODO: Replace with Firebase call
-      setFriends(MOCK_FRIENDS);
     }
   }, [user, authLoading, router]);
 
-  const handlePostStatus = async (data: { content: string }): Promise<void> => {
-    // Server action simulation - TODO: Replace with Firebase call
-    if(!user || !user.uid) {
-        toast({title: "Error", description: "You must be logged in to post a status.", variant: "destructive"});
-        return;
+  useEffect(() => {
+    if (!user?.uid) {
+      setFriends([]); // Clear friends if user logs out
+      activeListeners.forEach(unsub => unsub()); // Unsubscribe from all existing listeners
+      setActiveListeners([]);
+      return;
     }
-    console.log("Posting status:", data.content, "for user:", user.uid); // Use user.uid
-    
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-    // throw new Error("Simulated server error"); // Uncomment to test error handling
-  };
-  
+
+    // Clean up previous listeners before starting new ones
+    activeListeners.forEach(unsub => unsub());
+    const newListenersContainer: (() => void)[] = [];
+
+    const friendsCollectionRef = collection(db, 'users', user.uid, 'friends');
+    const friendsListUnsub = onSnapshot(friendsCollectionRef, (friendsSnapshot) => {
+      const friendUids = friendsSnapshot.docs.map(doc => doc.id);
+
+      // Further cleanup: Unsubscribe from listeners associated with friends no longer in the list
+      // This requires more sophisticated listener management (e.g., storing them in a map by friendUid)
+      // For now, we're resubscribing, which is less optimal but simpler for this iteration.
+      // The activeListeners array will be rebuilt.
+
+      // Initialize friends array with UIDs, other data will be filled by listeners
+      const initialFriendData = friendUids.map(uid => ({
+        id: uid,
+        name: 'Loading...',
+        avatarUrl: undefined,
+        location: { city: 'Unknown', country: '' }, // Provide a default structure for location
+        latestStatus: undefined,
+      }));
+      setFriends(initialFriendData);
+
+      const currentPerFriendListeners: (() => void)[] = [];
+
+      friendUids.forEach(friendUid => {
+        const profileUnsub = listenToUserProfile(friendUid, (friendProfile) => {
+          if (friendProfile) {
+            setFriends(prevFriends =>
+              prevFriends.map(f =>
+                f.id === friendUid
+                  ? {
+                      ...f,
+                      name: friendProfile.name || 'Unknown',
+                      avatarUrl: friendProfile.avatarUrl,
+                      location: friendProfile.currentLocation || { city: 'Not set', country: '' },
+                    }
+                  : f
+              )
+            );
+          } else {
+             // Handle case where friend profile is null (e.g., document deleted)
+             setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
+          }
+        });
+        currentPerFriendListeners.push(profileUnsub);
+
+        const statusUnsub = listenToLatestUserStatus(friendUid, (latestStatus) => {
+          setFriends(prevFriends =>
+            prevFriends.map(f =>
+              f.id === friendUid
+                ? { ...f, latestStatus: latestStatus || undefined }
+                : f
+            )
+          );
+        });
+        currentPerFriendListeners.push(statusUnsub);
+      });
+      // Combine the main friends list unsub with per-friend unsubs
+      setActiveListeners([friendsListUnsub, ...currentPerFriendListeners]);
+    }, (error) => {
+      console.error("Error listening to friends list:", error);
+      // Potentially show a toast or error message to the user
+    });
+
+    // Add the main friends list listener to the container initially
+    newListenersContainer.push(friendsListUnsub);
+    setActiveListeners(newListenersContainer); // This will be updated inside the friendsListUnsub callback too
+
+    return () => {
+      // This cleanup runs when user.uid changes or component unmounts
+      activeListeners.forEach(unsub => unsub()); // Cleans up all listeners stored
+      newListenersContainer.forEach(unsub => unsub()); // Ensure any initially added are also cleaned
+    };
+  }, [user?.uid]); // Effect dependency
+
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (authLoading || !isClient) {
@@ -63,7 +127,6 @@ export default function DashboardPage() {
   }
 
   if (!user) {
-     // Should be caught by useEffect, but as a fallback:
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)]">
         <p className="text-xl text-muted-foreground">Redirecting to login...</p>
@@ -97,15 +160,14 @@ export default function DashboardPage() {
           <FriendList friends={friends} />
         </section>
 
-        <section className="md:col-span-1 space-y-6 md:sticky md:top-24"> {/* Sticky status form */}
+        <section className="md:col-span-1 space-y-6 md:sticky md:top-24">
            <div className="flex items-center gap-2">
             <MessageSquare className="h-8 w-8 text-green-400" />
             <h2 className="text-3xl font-semibold">Share Your Vibe</h2>
           </div>
-          <StatusForm onPostStatus={handlePostStatus} />
+          <StatusForm /> {/* onPostStatus prop was removed previously */}
         </section>
       </div>
-
     </div>
   );
 }

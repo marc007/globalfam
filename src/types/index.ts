@@ -1,9 +1,24 @@
+
+import type { Timestamp } from 'firebase/firestore';
+
 export interface User {
-  uid: string; // Changed from id to uid to match Firebase
-  name: string | null; // Corresponds to displayName in Firebase
+  uid: string;
+  name: string | null;
   email: string | null;
-  avatarUrl?: string; // Corresponds to photoURL in Firebase, or custom
-  currentLocation?: UserLocation; // Will be stored in Firestore
+  avatarUrl?: string;
+  currentLocation?: UserLocation;
+  // If you add a createdAt field to User for example:
+  // createdAt?: Date | Timestamp; 
+}
+
+// This can be used when fetching user profile directly from 'users' collection.
+export interface UserProfileData {
+  uid: string;
+  name: string | null;
+  email: string | null;
+  avatarUrl?: string;
+  currentLocation?: UserLocation;
+  // createdAt?: Date; // After conversion
 }
 
 export interface UserLocation {
@@ -14,10 +29,10 @@ export interface UserLocation {
 }
 
 export interface Friend {
-  id: string; // This would be the friend's UID
+  id: string; // Friend's UID
   name: string;
   avatarUrl?: string;
-  location: UserLocation;
+  location: UserLocation; // This will be User.currentLocation
   latestStatus?: StatusUpdate;
 }
 
@@ -25,14 +40,16 @@ export interface StatusUpdate {
   id: string; // Firestore document ID
   userId: string; // User's UID
   content: string;
-  createdAt: Date; // Or Firebase Timestamp
+  createdAt: Date; // Always Date object in application code after conversion from Timestamp
 }
 
 export interface Invite {
   id: string; // Firestore document ID
   code: string;
-  createdAt: Date; // Or Firebase Timestamp
-  expiresAt: Date; // Or Firebase Timestamp
+  createdAt: Date; // Always Date object
+  expiresAt: Date; // Always Date object
   createdBy: string; // User's UID
-  usedBy?: string; // User's UID
+  status: 'pending' | 'used' | 'expired';
+  usedBy?: string; // User's UID who used the invite
+  usedAt?: Date; // Always Date object
 }

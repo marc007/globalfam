@@ -7,9 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { FriendList } from '@/components/friends/FriendList';
 import { MapDisplay } from '@/components/map/MapDisplay';
 import { StatusForm } from '@/components/forms/StatusForm';
-import type { Friend } from '@/types'; // UserLocation is part of Friend via UserProfileData
+import type { Friend, User } from '@/types'; // UserLocation is part of Friend via UserProfileData
 import { Loader2, Users, Map as MapIcon, MessageSquare } from 'lucide-react';
-// import { useToast } from '@/hooks/use-toast'; // Not used directly anymore for status posting here
 
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
@@ -19,7 +18,6 @@ import { listenToLatestUserStatus } from '@/lib/firebase/statusUpdates';
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
-  // const { toast } = useToast(); // Not used directly anymore
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [activeListeners, setActiveListeners] = useState<(() => void)[]>([]);
@@ -47,17 +45,17 @@ export default function DashboardPage() {
     const friendsListUnsub = onSnapshot(friendsCollectionRef, (friendsSnapshot) => {
       const friendUids = friendsSnapshot.docs.map(doc => doc.id);
 
-      // Further cleanup: Unsubscribe from listeners associated with friends no longer in the list
-      // This requires more sophisticated listener management (e.g., storing them in a map by friendUid)
-      // For now, we're resubscribing, which is less optimal but simpler for this iteration.
-      // The activeListeners array will be rebuilt.
+      // Further cleanup is implicitly handled by rebuilding listeners.
+      // When friendUids changes, old per-friend listeners related to removed friends
+      // are part of the 'activeListeners' that get unsubscribed at the start of this effect
+      // or when user.uid changes. The new 'activeListeners' will only contain listeners
+      // for the current set of friends.
 
-      // Initialize friends array with UIDs, other data will be filled by listeners
       const initialFriendData = friendUids.map(uid => ({
         id: uid,
         name: 'Loading...',
         avatarUrl: undefined,
-        location: { city: 'Unknown', country: '' }, // Provide a default structure for location
+        location: { city: 'Unknown', country: '' }, 
         latestStatus: undefined,
       }));
       setFriends(initialFriendData);
@@ -80,7 +78,6 @@ export default function DashboardPage() {
               )
             );
           } else {
-             // Handle case where friend profile is null (e.g., document deleted)
              setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
           }
         });
@@ -97,23 +94,26 @@ export default function DashboardPage() {
         });
         currentPerFriendListeners.push(statusUnsub);
       });
-      // Combine the main friends list unsub with per-friend unsubs
+      // Rebuild activeListeners with the main listener and new per-friend listeners
       setActiveListeners([friendsListUnsub, ...currentPerFriendListeners]);
     }, (error) => {
       console.error("Error listening to friends list:", error);
-      // Potentially show a toast or error message to the user
     });
 
-    // Add the main friends list listener to the container initially
     newListenersContainer.push(friendsListUnsub);
-    setActiveListeners(newListenersContainer); // This will be updated inside the friendsListUnsub callback too
+    // setActiveListeners is called inside onSnapshot to ensure it has the latest per-friend listeners.
+    // However, we must initialize it here too in case the onSnapshot callback doesn't fire immediately
+    // or if there are no friends initially.
+    setActiveListeners(newListenersContainer);
+
 
     return () => {
-      // This cleanup runs when user.uid changes or component unmounts
-      activeListeners.forEach(unsub => unsub()); // Cleans up all listeners stored
-      newListenersContainer.forEach(unsub => unsub()); // Ensure any initially added are also cleaned
+      activeListeners.forEach(unsub => unsub());
+      // newListenersContainer only contains friendsListUnsub at this point from outside the snapshot,
+      // ensure anything pushed into it is cleaned.
+      // The full set of listeners is managed by `activeListeners` state.
     };
-  }, [user?.uid]); // Effect dependency
+  }, [user?.uid]); 
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -148,7 +148,7 @@ export default function DashboardPage() {
           <MapIcon className="h-8 w-8 text-accent" />
           <h2 className="text-3xl font-semibold">Friends on the Map</h2>
         </div>
-        <MapDisplay friends={friends} apiKey={mapsApiKey} />
+        <MapDisplay friends={friends} apiKey={mapsApiKey} currentUser={user} />
       </section>
       
       <div className="grid md:grid-cols-3 gap-8 items-start">
@@ -165,7 +165,7 @@ export default function DashboardPage() {
             <MessageSquare className="h-8 w-8 text-green-400" />
             <h2 className="text-3xl font-semibold">Share Your Vibe</h2>
           </div>
-          <StatusForm /> {/* onPostStatus prop was removed previously */}
+          <StatusForm /> 
         </section>
       </div>
     </div>

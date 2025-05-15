@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Friend } from '@/types';
+import type { Friend, User, UserLocation, StatusUpdate } from '@/types';
 import React, { useState, useEffect } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
 import { Globe } from 'lucide-react';
@@ -10,33 +10,34 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 interface MapDisplayProps {
   friends: Friend[];
   apiKey: string | undefined;
+  currentUser: User | null;
 }
 
-interface MapMarker extends Friend {
+// Represents any pin on the map, whether current user or a friend
+interface MapPinData {
+  id: string; // User's UID
+  name: string;
+  avatarUrl?: string;
+  location: UserLocation;
+  latestStatus?: StatusUpdate; // Optional, typically for friends
   position: { lat: number; lng: number };
+  isCurrentUser: boolean;
 }
 
 // Mock geocoding function (in a real app, use Google Geocoding API)
 const geocodeLocation = async (city: string, country: string): Promise<{ lat: number; lng: number } | null> => {
   // This is a very basic mock. Real geocoding is complex.
-  // For demo purposes, returning slightly randomized coordinates around known cities or fixed points.
-  // In a production app, call a geocoding service here.
-  // console.log(`Geocoding (mock): ${city}, ${country}`);
-  // Example: Use a hash of city name to generate somewhat consistent mock coords.
   let hash = 0;
   for (let i = 0; i < city.length; i++) {
     const char = city.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash |= 0; // Convert to 32bit integer
   }
-  // Ensure coordinates are within valid ranges
-  const lat = (hash % 180000) / 1000 - 90; // Range -90 to 90
-  const lng = (hash % 360000) / 1000 - 180; // Range -180 to 180
+  const lat = (hash % 180000) / 1000 - 90; 
+  const lng = (hash % 360000) / 1000 - 180; 
   
-  // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 100 * Math.random()));
   
-  // For some known cities, provide more realistic (but still mock) coordinates
   const cityLower = city.toLowerCase();
   if (cityLower === "new york") return { lat: 40.7128 + (Math.random()-0.5)*0.1, lng: -74.0060 + (Math.random()-0.5)*0.1 };
   if (cityLower === "london") return { lat: 51.5074 + (Math.random()-0.5)*0.1, lng: -0.1278 + (Math.random()-0.5)*0.1 };
@@ -44,50 +45,83 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
   if (cityLower === "paris") return { lat: 48.8566 + (Math.random()-0.5)*0.1, lng: 2.3522 + (Math.random()-0.5)*0.1 };
   if (cityLower === "sydney") return { lat: -33.8688 + (Math.random()-0.5)*0.1, lng: 151.2093 + (Math.random()-0.5)*0.1 };
   
-  // Fallback to random if not a known city
   return { lat , lng };
 };
 
 
-export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
-  const [markers, setMarkers] = useState<MapMarker[]>([]);
-  const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
+export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
+  const [mapPins, setMapPins] = useState<MapPinData[]>([]);
+  const [selectedPin, setSelectedPin] = useState<MapPinData | null>(null);
   
-  // State for initial map center and zoom. These values will be used for defaultCenter/defaultZoom
-  // and will update if the 'friends' prop changes, re-keying the map.
   const [initialCenter, setInitialCenter] = useState({ lat: 20, lng: 0 });
   const [initialZoom, setInitialZoom] = useState(2);
 
   useEffect(() => {
-    const fetchMarkers = async () => {
-      const newMarkers: MapMarker[] = [];
+    const fetchMapPins = async () => {
+      const newMapPins: MapPinData[] = [];
+
+      // Process friends
       for (const friend of friends) {
         if (friend.location && friend.location.city && friend.location.country) {
+          let coords: { lat: number; lng: number } | null = null;
           if (friend.location.latitude && friend.location.longitude) {
-             newMarkers.push({ ...friend, position: { lat: friend.location.latitude, lng: friend.location.longitude } });
+             coords = { lat: friend.location.latitude, lng: friend.location.longitude };
           } else {
-            const coords = await geocodeLocation(friend.location.city, friend.location.country);
-            if (coords) {
-              newMarkers.push({ ...friend, position: coords });
-            }
+            coords = await geocodeLocation(friend.location.city, friend.location.country);
+          }
+          if (coords) {
+            newMapPins.push({ 
+              ...friend, 
+              position: coords,
+              isCurrentUser: false 
+            });
           }
         }
       }
-      setMarkers(newMarkers);
-      if (newMarkers.length > 0) {
-        const firstValidMarker = newMarkers.find(m => m.position);
-        if (firstValidMarker) {
-          setInitialCenter(firstValidMarker.position);
-          setInitialZoom(newMarkers.length === 1 ? 6 : 3);
+
+      // Process current user
+      if (currentUser && currentUser.currentLocation) {
+        const userLoc = currentUser.currentLocation;
+        if (userLoc.city && userLoc.country) {
+          let userCoords: { lat: number; lng: number } | null = null;
+          if (userLoc.latitude && userLoc.longitude) {
+            userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
+          } else {
+            userCoords = await geocodeLocation(userLoc.city, userLoc.country);
+          }
+
+          if (userCoords) {
+            newMapPins.push({
+              id: currentUser.uid,
+              name: currentUser.name || 'Your Location',
+              avatarUrl: currentUser.avatarUrl,
+              location: userLoc,
+              position: userCoords,
+              isCurrentUser: true,
+              // latestStatus: undefined, // Current user's pin doesn't show their own status in this context
+            });
+          }
+        }
+      }
+      
+      setMapPins(newMapPins);
+
+      if (newMapPins.length > 0) {
+        // Prioritize current user's location for initial center if available
+        const currentUserPin = newMapPins.find(p => p.isCurrentUser);
+        const firstPin = currentUserPin || newMapPins[0];
+        
+        if (firstPin && firstPin.position) {
+          setInitialCenter(firstPin.position);
+          setInitialZoom(newMapPins.length === 1 ? 6 : 3); // Zoom in more if only one pin
         }
       } else {
-        // Reset to a default world view if no markers
         setInitialCenter({ lat: 20, lng: 0 });
         setInitialZoom(2);
       }
     };
-    fetchMarkers();
-  }, [friends]);
+    fetchMapPins();
+  }, [friends, currentUser]);
 
   if (!apiKey) {
     return (
@@ -113,46 +147,45 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
     <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border">
       <APIProvider apiKey={apiKey}>
         <Map
-          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}`} // Re-mount map if initial center/zoom changes
+          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}`} 
           defaultCenter={initialCenter}
           defaultZoom={initialZoom}
-          minZoom={2} // Prevent zooming out too far
-          // By removing 'center' and 'zoom' props here, we make them uncontrolled after initial render.
-          // The map will manage its own state for panning and zooming.
+          minZoom={2}
           gestureHandling={'greedy'}
-          disableDefaultUI={true} // Keep this true if you want to selectively enable controls
+          disableDefaultUI={true}
           mapId={'globalfam_map_dark'}
           className="h-full w-full"
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
-          zoomControl={true} // This enables zoom controls (+/- buttons)
+          zoomControl={true}
         >
-          {markers.map((marker) => (
+          {mapPins.map((pin) => (
             <AdvancedMarker
-              key={marker.id}
-              position={marker.position}
-              onClick={() => setSelectedMarker(marker)}
+              key={pin.id}
+              position={pin.position}
+              onClick={() => setSelectedPin(pin)}
+              zIndex={pin.isCurrentUser ? 10 : 1} // Current user's pin on top
             >
               <Pin
-                background={'hsl(var(--primary))'}
-                borderColor={'hsl(var(--primary-foreground))'}
-                glyphColor={'hsl(var(--primary-foreground))'}
+                background={pin.isCurrentUser ? 'hsl(var(--accent))' : 'hsl(var(--primary))'}
+                borderColor={pin.isCurrentUser ? 'hsl(var(--accent-foreground))' : 'hsl(var(--primary-foreground))'}
+                glyphColor={pin.isCurrentUser ? 'hsl(var(--accent-foreground))' : 'hsl(var(--primary-foreground))'}
               />
             </AdvancedMarker>
           ))}
 
-          {selectedMarker && selectedMarker.position && (
+          {selectedPin && selectedPin.position && (
             <InfoWindow
-              position={selectedMarker.position}
-              onCloseClick={() => setSelectedMarker(null)}
+              position={selectedPin.position}
+              onCloseClick={() => setSelectedPin(null)}
               pixelOffset={[0,-40]}
             >
               <div className="p-2 text-card-foreground bg-card rounded-md shadow-md max-w-xs">
-                <h3 className="text-md font-semibold text-primary">{selectedMarker.name}</h3>
-                <p className="text-sm text-muted-foreground">{selectedMarker.location.city}, {selectedMarker.location.country}</p>
-                {selectedMarker.latestStatus && (
-                  <p className="text-xs mt-1 italic">&ldquo;{selectedMarker.latestStatus.content}&rdquo;</p>
+                <h3 className={`text-md font-semibold ${selectedPin.isCurrentUser ? 'text-accent' : 'text-primary'}`}>{selectedPin.name}</h3>
+                <p className="text-sm text-muted-foreground">{selectedPin.location.city}, {selectedPin.location.country}</p>
+                {selectedPin.latestStatus && !selectedPin.isCurrentUser && (
+                  <p className="text-xs mt-1 italic">&ldquo;{selectedPin.latestStatus.content}&rdquo;</p>
                 )}
               </div>
             </InfoWindow>
@@ -162,5 +195,3 @@ export function MapDisplay({ friends, apiKey }: MapDisplayProps) {
     </div>
   );
 }
-
-    

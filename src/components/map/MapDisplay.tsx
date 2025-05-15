@@ -64,7 +64,8 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
       for (const friend of friends) {
         if (friend.location && friend.location.city && friend.location.country) {
           let coords: { lat: number; lng: number } | null = null;
-          if (friend.location.latitude && friend.location.longitude) {
+          // Correctly check if latitude and longitude are numbers (including 0)
+          if (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number') {
              coords = { lat: friend.location.latitude, lng: friend.location.longitude };
           } else {
             coords = await geocodeLocation(friend.location.city, friend.location.country);
@@ -84,7 +85,8 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
         const userLoc = currentUser.currentLocation;
         if (userLoc.city && userLoc.country) {
           let userCoords: { lat: number; lng: number } | null = null;
-          if (userLoc.latitude && userLoc.longitude) {
+           // Correctly check if latitude and longitude are numbers (including 0)
+          if (typeof userLoc.latitude === 'number' && typeof userLoc.longitude === 'number') {
             userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
           } else {
             userCoords = await geocodeLocation(userLoc.city, userLoc.country);
@@ -98,7 +100,6 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
               location: userLoc,
               position: userCoords,
               isCurrentUser: true,
-              // latestStatus: undefined, // Current user's pin doesn't show their own status in this context
             });
           }
         }
@@ -107,13 +108,17 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
       setMapPins(newMapPins);
 
       if (newMapPins.length > 0) {
-        // Prioritize current user's location for initial center if available
         const currentUserPin = newMapPins.find(p => p.isCurrentUser);
         const firstPin = currentUserPin || newMapPins[0];
         
-        if (firstPin && firstPin.position) {
+        if (firstPin && firstPin.position && 
+            typeof firstPin.position.lat === 'number' && typeof firstPin.position.lng === 'number') {
           setInitialCenter(firstPin.position);
-          setInitialZoom(newMapPins.length === 1 ? 6 : 3); // Zoom in more if only one pin
+          setInitialZoom(newMapPins.length === 1 ? 6 : 3); 
+        } else {
+          // Fallback if firstPin or its position is somehow invalid
+          setInitialCenter({ lat: 20, lng: 0 });
+          setInitialZoom(2);
         }
       } else {
         setInitialCenter({ lat: 20, lng: 0 });
@@ -165,7 +170,7 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
               key={pin.id}
               position={pin.position}
               onClick={() => setSelectedPin(pin)}
-              zIndex={pin.isCurrentUser ? 10 : 1} // Current user's pin on top
+              zIndex={pin.isCurrentUser ? 10 : 1}
             >
               <Pin
                 background={pin.isCurrentUser ? 'hsl(var(--accent))' : 'hsl(var(--primary))'}

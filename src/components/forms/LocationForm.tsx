@@ -12,21 +12,24 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Navigation, Globe } from "lucide-react"; // Added Globe
+import { MapPin, Navigation, Search, Globe, Sigma } from "lucide-react"; // Added Search
 import type { UserLocation } from "@/types";
+import React, { useEffect, useRef, useState } from "react"; // Added useEffect, useRef
 
 const locationFormSchema = z.object({
-  city: z.string().min(2, { message: "City must be at least 2 characters." }).max(50),
-  country: z.string().min(2, { message: "Country must be at least 2 characters." }).max(50),
+  searchQuery: z.string().optional(), // For the autocomplete input
+  city: z.string().min(1, { message: "City is required after selection." }).max(100),
+  country: z.string().min(1, { message: "Country is required after selection." }).max(100),
   latitude: z.preprocess(
-    (val) => (val === "" ? undefined : parseFloat(String(val))),
+    (val) => (val === "" || val === undefined ? undefined : parseFloat(String(val))),
     z.number().min(-90).max(90).optional()
   ),
   longitude: z.preprocess(
-    (val) => (val === "" ? undefined : parseFloat(String(val))),
+    (val) => (val === "" || val === undefined ? undefined : parseFloat(String(val))),
     z.number().min(-180).max(180).optional()
   ),
 });
@@ -43,12 +46,15 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
   const form = useForm<LocationFormValues>({
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
+      searchQuery: currentLocation ? `${currentLocation.city}, ${currentLocation.country}` : "",
       city: currentLocation?.city || "",
       country: currentLocation?.country || "",
       latitude: currentLocation?.latitude,
       longitude: currentLocation?.longitude,
     },
-    values: { 
+    // Setting values directly to ensure form updates if currentLocation prop changes
+    values: {
+      searchQuery: currentLocation ? `${currentLocation.city}, ${currentLocation.country}` : "",
       city: currentLocation?.city || "",
       country: currentLocation?.country || "",
       latitude: currentLocation?.latitude,
@@ -56,7 +62,80 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
     }
   });
 
+  const autocompleteInputRef = useRef<HTMLInputElement>(null);
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const [isGoogleMapsApiLoaded, setIsGoogleMapsApiLoaded] = useState(false);
+
+  useEffect(() => {
+    // Check if Google Maps API is loaded
+    if (window.google && window.google.maps && window.google.maps.places) {
+      setIsGoogleMapsApiLoaded(true);
+    } else {
+      // Poll for Google Maps API (simple polling, can be improved with script load events)
+      const intervalId = setInterval(() => {
+        if (window.google && window.google.maps && window.google.maps.places) {
+          setIsGoogleMapsApiLoaded(true);
+          clearInterval(intervalId);
+        }
+      }, 500);
+      return () => clearInterval(intervalId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isGoogleMapsApiLoaded && autocompleteInputRef.current && !autocomplete) {
+      const options: google.maps.places.AutocompleteOptions = {
+        types: ['(regions)'], // Suggest cities/regions
+        fields: ['address_components', 'geometry', 'name'],
+      };
+      const autocompleteInstance = new google.maps.places.Autocomplete(
+        autocompleteInputRef.current,
+        options
+      );
+
+      autocompleteInstance.addListener('place_changed', () => {
+        const place = autocompleteInstance.getPlace();
+        if (place && place.geometry && place.geometry.location && place.address_components) {
+          let city = '';
+          let country = '';
+
+          for (const component of place.address_components) {
+            if (component.types.includes('locality') || component.types.includes('postal_town')) {
+              city = component.long_name;
+            }
+            if (component.types.includes('administrative_area_level_1') && !city) { // State/Province as fallback for city
+              city = component.long_name;
+            }
+            if (component.types.includes('country')) {
+              country = component.long_name;
+            }
+          }
+          
+          // If city is still empty, use the place name (often a city itself)
+          if (!city && place.name) {
+            city = place.name;
+          }
+
+
+          form.setValue('city', city, { shouldValidate: true });
+          form.setValue('country', country, { shouldValidate: true });
+          form.setValue('latitude', place.geometry.location.lat(), { shouldValidate: true });
+          form.setValue('longitude', place.geometry.location.lng(), { shouldValidate: true });
+          form.setValue('searchQuery', `${city}, ${country}`, {shouldValidate: false}); // Update search query to reflect selection
+        }
+      });
+      setAutocomplete(autocompleteInstance);
+    }
+     // Cleanup: remove listener if component unmounts or autocomplete changes
+    // Note: Google Maps Autocomplete listeners are typically managed by the instance itself
+    // and often don't need explicit removal unless you're re-creating the instance frequently
+    // or facing memory leak issues. For simplicity, explicit removal is omitted here.
+  }, [isGoogleMapsApiLoaded, autocompleteInputRef, form, autocomplete]);
+
+
   async function onSubmit(data: LocationFormValues) {
+    // The data already contains city, country, lat, lng populated by autocomplete
+    // or potentially manually overridden if fields were enabled.
     const locationData: UserLocation = {
       city: data.city,
       country: data.country,
@@ -76,48 +155,74 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
         <CardTitle className="flex items-center text-2xl text-primary">
           <MapPin className="mr-2 h-6 w-6" /> Update Your Location
         </CardTitle>
-        <CardDescription>Let your friends know where you are. Provide city/country or precise coordinates.</CardDescription>
+        <CardDescription>Search for your location below. Latitude and longitude will be auto-filled.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="city"
+              name="searchQuery"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-accent">City</FormLabel>
+                  <FormLabel className="text-accent flex items-center">
+                     <Search className="mr-1 h-4 w-4" /> Search Location
+                  </FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Tokyo, Paris, New York" {...field} className="bg-input" disabled={isPending}/>
+                    <Input
+                      placeholder="e.g., Tokyo, Japan or Paris"
+                      {...field}
+                      ref={autocompleteInputRef}
+                      className="bg-input"
+                      disabled={isPending || !isGoogleMapsApiLoaded}
+                    />
                   </FormControl>
+                  {!isGoogleMapsApiLoaded && <FormDescription className="text-destructive-foreground/70">Location search is initializing...</FormDescription>}
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="country"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-accent">Country</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Japan, France, USA" {...field} className="bg-input" disabled={isPending}/>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground">City (Auto-filled)</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="bg-input/50 border-input/50" disabled />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground">Country (Auto-filled)</FormLabel>
+                    <FormControl>
+                      <Input {...field} className="bg-input/50 border-input/50" disabled />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="latitude"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-accent flex items-center">
-                      <Globe className="mr-1 h-4 w-4" /> Latitude (Optional)
+                    <FormLabel className="text-muted-foreground flex items-center">
+                      <Sigma className="mr-1 h-4 w-4" /> Latitude (Auto-filled)
                     </FormLabel>
                     <FormControl>
-                      <Input type="number" step="any" placeholder="e.g., 35.6895" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input" disabled={isPending}/>
+                      <Input type="number" step="any" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input/50 border-input/50" disabled />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -128,11 +233,11 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
                 name="longitude"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-accent flex items-center">
-                      <Globe className="mr-1 h-4 w-4" /> Longitude (Optional)
+                    <FormLabel className="text-muted-foreground flex items-center">
+                      <Sigma className="mr-1 h-4 w-4" /> Longitude (Auto-filled)
                     </FormLabel>
                     <FormControl>
-                      <Input type="number" step="any" placeholder="e.g., 139.6917" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input" disabled={isPending}/>
+                      <Input type="number" step="any" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input/50 border-input/50" disabled />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -140,11 +245,11 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              If latitude and longitude are provided, they will be used directly. Otherwise, location will be estimated from city/country.
+              Selected location details will appear above. Click update to save.
             </p>
-            <Button 
-              type="submit" 
-              disabled={isPending} 
+            <Button
+              type="submit"
+              disabled={isPending || !form.formState.isValid || !form.getValues("city") } // Also disable if city is not filled
               className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-semibold py-3 text-lg transition-transform hover:scale-105"
             >
               {isPending ? (

@@ -1,19 +1,21 @@
 
 "use client";
 
-import { useEffect, useState, ChangeEvent } from 'react';
+import { useEffect, useState, ChangeEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { LocationForm } from '@/components/forms/LocationForm';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera } from 'lucide-react'; 
+import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera, AlertTriangle } from 'lucide-react';
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { uploadAvatar } from '@/lib/firebase/storage'; 
-import { updateUserAvatarUrl } from '@/lib/firebase/users'; 
+import { uploadAvatar } from '@/lib/firebase/storage';
+import { updateUserAvatarUrl } from '@/lib/firebase/users';
+import { APIProvider } from '@vis.gl/react-google-maps';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 async function updateUserLocationClient(userId: string, location: UserLocation): Promise<void> {
@@ -33,6 +35,7 @@ export default function ProfilePage() {
   const [isClient, setIsClient] = useState(false);
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 
   useEffect(() => {
@@ -91,7 +94,7 @@ export default function ProfilePage() {
       setIsUploadingAvatar(false);
     }
   };
-  
+
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'GF';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -107,8 +110,31 @@ export default function ProfilePage() {
   }
 
   if (!user) {
-    return null; 
+    return null;
   }
+
+  const renderLocationForm = () => {
+    if (!mapsApiKey) {
+      return (
+        <Alert variant="destructive" className="mt-4">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Location Services Unavailable</AlertTitle>
+          <AlertDescription>
+            The Google Maps API key is not configured. Location features, including autocomplete, are disabled.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+    return (
+      <APIProvider apiKey={mapsApiKey} libraries={['places']}>
+        <LocationForm
+          currentLocation={user.currentLocation}
+          onUpdateLocation={handleUpdateLocation}
+          isPending={isUpdatingLocation}
+        />
+      </APIProvider>
+    );
+  };
 
   return (
     <div className="space-y-12">
@@ -120,10 +146,10 @@ export default function ProfilePage() {
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
                 </div>
              ) : null}
-            <AvatarImage 
+            <AvatarImage
               src={user.avatarUrl}
               alt={user.name ?? 'User'}
-              className={isUploadingAvatar ? 'opacity-50' : ''} 
+              className={isUploadingAvatar ? 'opacity-50' : ''}
               data-ai-hint="profile avatar"
             />
             <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(user.name)}</AvatarFallback>
@@ -132,10 +158,10 @@ export default function ProfilePage() {
               <Camera className="h-8 w-8" />
            </div>
         </label>
-        <input 
-          id="avatar-upload" 
-          type="file" 
-          accept="image/*" 
+        <input
+          id="avatar-upload"
+          type="file"
+          accept="image/*"
           onChange={handleAvatarChange}
           className="hidden"
           disabled={isUploadingAvatar}
@@ -149,11 +175,7 @@ export default function ProfilePage() {
 
       <div className="grid md:grid-cols-2 gap-8 items-start">
         <section id="location">
-          <LocationForm 
-            currentLocation={user.currentLocation} 
-            onUpdateLocation={handleUpdateLocation} 
-            isPending={isUpdatingLocation}
-          />
+          {renderLocationForm()}
         </section>
 
         <section>

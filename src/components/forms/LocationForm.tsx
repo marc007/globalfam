@@ -16,12 +16,13 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Navigation, Search, Globe, Sigma } from "lucide-react"; // Added Search
+import { MapPin, Navigation, Search, Globe, Sigma } from "lucide-react";
 import type { UserLocation } from "@/types";
-import React, { useEffect, useRef, useState } from "react"; // Added useEffect, useRef
+import React, { useEffect, useRef, useState } from "react";
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
 
 const locationFormSchema = z.object({
-  searchQuery: z.string().optional(), // For the autocomplete input
+  searchQuery: z.string().optional(), 
   city: z.string().min(1, { message: "City is required after selection." }).max(100),
   country: z.string().min(1, { message: "Country is required after selection." }).max(100),
   latitude: z.preprocess(
@@ -52,7 +53,6 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
       latitude: currentLocation?.latitude,
       longitude: currentLocation?.longitude,
     },
-    // Setting values directly to ensure form updates if currentLocation prop changes
     values: {
       searchQuery: currentLocation ? `${currentLocation.city}, ${currentLocation.country}` : "",
       city: currentLocation?.city || "",
@@ -64,31 +64,16 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
 
   const autocompleteInputRef = useRef<HTMLInputElement>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
-  const [isGoogleMapsApiLoaded, setIsGoogleMapsApiLoaded] = useState(false);
+  const places = useMapsLibrary('places'); // Use the hook to load the places library
 
   useEffect(() => {
-    // Check if Google Maps API is loaded
-    if (window.google && window.google.maps && window.google.maps.places) {
-      setIsGoogleMapsApiLoaded(true);
-    } else {
-      // Poll for Google Maps API (simple polling, can be improved with script load events)
-      const intervalId = setInterval(() => {
-        if (window.google && window.google.maps && window.google.maps.places) {
-          setIsGoogleMapsApiLoaded(true);
-          clearInterval(intervalId);
-        }
-      }, 500);
-      return () => clearInterval(intervalId);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isGoogleMapsApiLoaded && autocompleteInputRef.current && !autocomplete) {
+    if (places && autocompleteInputRef.current && !autocomplete) {
       const options: google.maps.places.AutocompleteOptions = {
-        types: ['(regions)'], // Suggest cities/regions
+        types: ['(regions)'], 
         fields: ['address_components', 'geometry', 'name'],
       };
-      const autocompleteInstance = new google.maps.places.Autocomplete(
+      // Initialize Autocomplete using the places library object
+      const autocompleteInstance = new places.Autocomplete(
         autocompleteInputRef.current,
         options
       );
@@ -103,7 +88,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
             if (component.types.includes('locality') || component.types.includes('postal_town')) {
               city = component.long_name;
             }
-            if (component.types.includes('administrative_area_level_1') && !city) { // State/Province as fallback for city
+            if (component.types.includes('administrative_area_level_1') && !city) { 
               city = component.long_name;
             }
             if (component.types.includes('country')) {
@@ -111,31 +96,23 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
             }
           }
           
-          // If city is still empty, use the place name (often a city itself)
           if (!city && place.name) {
             city = place.name;
           }
-
 
           form.setValue('city', city, { shouldValidate: true });
           form.setValue('country', country, { shouldValidate: true });
           form.setValue('latitude', place.geometry.location.lat(), { shouldValidate: true });
           form.setValue('longitude', place.geometry.location.lng(), { shouldValidate: true });
-          form.setValue('searchQuery', `${city}, ${country}`, {shouldValidate: false}); // Update search query to reflect selection
+          form.setValue('searchQuery', `${city}, ${country}`, {shouldValidate: false}); 
         }
       });
       setAutocomplete(autocompleteInstance);
     }
-     // Cleanup: remove listener if component unmounts or autocomplete changes
-    // Note: Google Maps Autocomplete listeners are typically managed by the instance itself
-    // and often don't need explicit removal unless you're re-creating the instance frequently
-    // or facing memory leak issues. For simplicity, explicit removal is omitted here.
-  }, [isGoogleMapsApiLoaded, autocompleteInputRef, form, autocomplete]);
+  }, [places, autocompleteInputRef, form, autocomplete]); // Depend on the places library
 
 
   async function onSubmit(data: LocationFormValues) {
-    // The data already contains city, country, lat, lng populated by autocomplete
-    // or potentially manually overridden if fields were enabled.
     const locationData: UserLocation = {
       city: data.city,
       country: data.country,
@@ -155,7 +132,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
         <CardTitle className="flex items-center text-2xl text-primary">
           <MapPin className="mr-2 h-6 w-6" /> Update Your Location
         </CardTitle>
-        <CardDescription>Search for your location below. Latitude and longitude will be auto-filled.</CardDescription>
+        <CardDescription>Search for your location below. Details will be auto-filled.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -174,10 +151,10 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
                       {...field}
                       ref={autocompleteInputRef}
                       className="bg-input"
-                      disabled={isPending || !isGoogleMapsApiLoaded}
+                      disabled={isPending || !places} // Disable if places library isn't loaded
                     />
                   </FormControl>
-                  {!isGoogleMapsApiLoaded && <FormDescription className="text-destructive-foreground/70">Location search is initializing...</FormDescription>}
+                  {!places && <FormDescription className="text-muted-foreground/70">Location search is initializing...</FormDescription>}
                   <FormMessage />
                 </FormItem>
               )}
@@ -222,7 +199,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
                       <Sigma className="mr-1 h-4 w-4" /> Latitude (Auto-filled)
                     </FormLabel>
                     <FormControl>
-                      <Input type="number" step="any" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input/50 border-input/50" disabled />
+                      <Input type="number" step="any" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} value={field.value ?? ""} className="bg-input/50 border-input/50" disabled />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -237,7 +214,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
                       <Sigma className="mr-1 h-4 w-4" /> Longitude (Auto-filled)
                     </FormLabel>
                     <FormControl>
-                      <Input type="number" step="any" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input/50 border-input/50" disabled />
+                      <Input type="number" step="any" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))} value={field.value ?? ""} className="bg-input/50 border-input/50" disabled />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -249,7 +226,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
             </p>
             <Button
               type="submit"
-              disabled={isPending || !form.formState.isValid || !form.getValues("city") } // Also disable if city is not filled
+              disabled={isPending || !form.formState.isValid || !form.getValues("city") || !places } 
               className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-semibold py-3 text-lg transition-transform hover:scale-105"
             >
               {isPending ? (

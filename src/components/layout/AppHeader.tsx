@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -48,7 +49,7 @@ export function AppHeader() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                    <Avatar className="h-10 w-10 border-2 border-primary hover:border-accent transition-colors">
+                    <Avatar key={user.avatarUrl || user.uid} className="h-10 w-10 border-2 border-primary hover:border-accent transition-colors">
                       <AvatarImage src={user.avatarUrl} alt={user.name ?? 'User'} data-ai-hint="profile avatar" />
                       <AvatarFallback className="bg-primary text-primary-foreground">{getInitials(user.name)}</AvatarFallback>
                     </Avatar>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, ChangeEvent } from 'react';
@@ -6,23 +7,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import { LocationForm } from '@/components/forms/LocationForm';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera } from 'lucide-react'; // Added Camera icon
+import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera } from 'lucide-react'; 
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { uploadAvatar } from '@/lib/firebase/storage'; // Import storage function
-import { updateUserAvatarUrl } from '@/lib/firebase/users'; // Import user update function
+import { uploadAvatar } from '@/lib/firebase/storage'; 
+import { updateUserAvatarUrl } from '@/lib/firebase/users'; 
 
 
-// Server action replaced by client-side Firebase call
 async function updateUserLocationClient(userId: string, location: UserLocation): Promise<void> {
   console.log(`Firebase: Updating location for user ${userId} to`, location);
   const db = getFirestore();
   const userDocRef = doc(db, "users", userId);
   await updateDoc(userDocRef, {
     currentLocation: location,
-    // Potentially add latitude/longitude here if geocoded
   });
 }
 
@@ -33,7 +32,7 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false); // New state for avatar upload
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
 
   useEffect(() => {
@@ -75,8 +74,6 @@ export default function ProfilePage() {
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
       await updateUserAvatarUrl(user.uid, downloadURL);
-
-      // Update user state in AuthContext
       setUser(prevUser => prevUser ? ({ ...prevUser, avatarUrl: downloadURL }) : null);
 
       toast({
@@ -110,15 +107,14 @@ export default function ProfilePage() {
   }
 
   if (!user) {
-    return null; // Or redirect, handled by useEffect
+    return null; 
   }
 
   return (
     <div className="space-y-12">
       <section className="flex flex-col items-center text-center">
-        {/* Avatar with upload functionality */}
         <label htmlFor="avatar-upload" className="cursor-pointer relative group mb-6">
-          <Avatar className="h-32 w-32 border-4 border-primary shadow-lg relative">
+          <Avatar key={user.avatarUrl || user.uid} className="h-32 w-32 border-4 border-primary shadow-lg relative">
              {isUploadingAvatar ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10 rounded-full">
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -127,7 +123,8 @@ export default function ProfilePage() {
             <AvatarImage 
               src={user.avatarUrl}
               alt={user.name ?? 'User'}
-              className={isUploadingAvatar ? 'opacity-50' : ''} // Corrected className syntax
+              className={isUploadingAvatar ? 'opacity-50' : ''} 
+              data-ai-hint="profile avatar"
             />
             <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(user.name)}</AvatarFallback>
           </Avatar>
@@ -176,7 +173,6 @@ export default function ProfilePage() {
                   <p className="text-muted-foreground">No location set. Update it using the form!</p>
                 )}
               </div>
-              {/* The "Change Avatar (Coming Soon)" button is replaced by the clickable avatar */}
                <Button variant="destructive" onClick={logout} className="w-full">
                 <LogOut className="mr-2 h-4 w-4" /> Log Out
               </Button>

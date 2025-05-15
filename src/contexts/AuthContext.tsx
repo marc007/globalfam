@@ -1,6 +1,7 @@
+
 "use client";
 
-import type { User } from '@/types';
+import type { User, UserProfileData } from '@/types'; // Added UserProfileData import
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
@@ -13,11 +14,11 @@ import {
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation'; 
 
 interface AuthContextType {
   user: User | null;
-  setUser: Dispatch<SetStateAction<User | null>>; // Kept for direct manipulation if needed, though mostly driven by onAuthStateChanged
+  setUser: Dispatch<SetStateAction<User | null>>;
   isLoading: boolean;
   signUp: (name: string, email: string, password: string) => Promise<FirebaseUser | null>;
   signIn: (email: string, password: string) => Promise<FirebaseUser | null>;
@@ -29,30 +30,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter(); // Initialize router
+  const router = useRouter(); 
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is signed in
-        // Fetch additional user data from Firestore if necessary
         const userDocRef = doc(db, "users", firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
 
         if (userDocSnap.exists()) {
-          const firestoreUser = userDocSnap.data();
+          const firestoreUser = userDocSnap.data() as UserProfileData; // Explicitly cast for clarity
           setUser({
             uid: firebaseUser.uid,
-            name: firebaseUser.displayName || firestoreUser.name,
+            name: firestoreUser.name || firebaseUser.displayName, // Prioritize Firestore name
             email: firebaseUser.email,
-            avatarUrl: firebaseUser.photoURL || firestoreUser.avatarUrl,
-            currentLocation: firestoreUser.currentLocation, // Assuming this structure in Firestore
+            avatarUrl: firestoreUser.avatarUrl || firebaseUser.photoURL, // Prioritize Firestore avatarUrl
+            currentLocation: firestoreUser.currentLocation, 
           });
         } else {
-          // User exists in Auth but not Firestore, create a basic profile
            const newUserProfile: User = {
             uid: firebaseUser.uid,
-            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User', // Default name
+            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User',
             email: firebaseUser.email,
             avatarUrl: firebaseUser.photoURL || `https://picsum.photos/seed/${firebaseUser.uid}/100/100`,
           };
@@ -65,13 +63,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(newUserProfile);
         }
       } else {
-        // User is signed out
         setUser(null);
       }
       setIsLoading(false);
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, []);
 
@@ -79,33 +75,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(userCredential.user, { displayName: name, photoURL: `https://picsum.photos/seed/${userCredential.user.uid}/100/100` });
+      // Use a placeholder or a default avatar URL logic for new sign-ups
+      const defaultAvatar = `https://placehold.co/100x100.png?text=${name.substring(0,2).toUpperCase()}`;
+      await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
       
-      // Create user document in Firestore
       const userDocRef = doc(db, "users", userCredential.user.uid);
       await setDoc(userDocRef, {
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: userCredential.user.photoURL,
+        avatarUrl: defaultAvatar, // Store this default avatar in Firestore as well
         createdAt: new Date(),
-        // currentLocation can be added later by the user
       });
       
-      // onAuthStateChanged will handle setting the user state
-      // Manually set user here to reflect name/avatar changes immediately before onAuthStateChanged fires with potentially old data
-       setUser({
+       setUser({ // Update local context state immediately
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: userCredential.user.photoURL,
+        avatarUrl: defaultAvatar,
       });
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
       console.error("Error signing up:", error);
       setIsLoading(false);
-      throw error; // Re-throw to be caught by the form
+      throw error; 
     }
   };
 
@@ -113,13 +107,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting the user state
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
       console.error("Error signing in:", error);
       setIsLoading(false);
-      throw error; // Re-throw to be caught by the form
+      throw error; 
     }
   };
 
@@ -127,9 +120,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       await firebaseSignOut(auth);
-      // onAuthStateChanged will set user to null
-      // No need to manually set user to null here, onAuthStateChanged handles it
-      router.push('/'); // Redirect to home page after logout
+      router.push('/'); 
     } catch (error) {
       console.error("Error signing out: ", error);
     } finally {

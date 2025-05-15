@@ -13,38 +13,39 @@ interface MapDisplayProps {
   currentUser: User | null;
 }
 
-// Represents any pin on the map, whether current user or a friend
 interface MapPinData {
-  id: string; // User's UID
+  id: string; 
   name: string;
   avatarUrl?: string;
   location: UserLocation;
-  latestStatus?: StatusUpdate; // Optional, typically for friends
+  latestStatus?: StatusUpdate; 
   position: { lat: number; lng: number };
   isCurrentUser: boolean;
 }
 
-// Mock geocoding function (in a real app, use Google Geocoding API)
 const geocodeLocation = async (city: string, country: string): Promise<{ lat: number; lng: number } | null> => {
-  // This is a very basic mock. Real geocoding is complex.
   let hash = 0;
-  for (let i = 0; i < city.length; i++) {
-    const char = city.charCodeAt(i);
+  for (let i = 0; i < (city + country).length; i++) {
+    const char = (city + country).charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0; 
   }
-  const lat = (hash % 180000) / 1000 - 90; 
-  const lng = (hash % 360000) / 1000 - 180; 
-  
-  await new Promise(resolve => setTimeout(resolve, 100 * Math.random()));
+  // Ensure slightly different pseudo-random coords for different cities
+  const latNoise = ((hash % 1000) / 5000) - 0.1; // smaller noise
+  const lngNoise = ((hash % 2000) / 10000) - 0.1; // smaller noise
+
+  await new Promise(resolve => setTimeout(resolve, 50 * Math.random())); // Faster mock
   
   const cityLower = city.toLowerCase();
-  if (cityLower === "new york") return { lat: 40.7128 + (Math.random()-0.5)*0.1, lng: -74.0060 + (Math.random()-0.5)*0.1 };
-  if (cityLower === "london") return { lat: 51.5074 + (Math.random()-0.5)*0.1, lng: -0.1278 + (Math.random()-0.5)*0.1 };
-  if (cityLower === "tokyo") return { lat: 35.6895 + (Math.random()-0.5)*0.1, lng: 139.6917 + (Math.random()-0.5)*0.1 };
-  if (cityLower === "paris") return { lat: 48.8566 + (Math.random()-0.5)*0.1, lng: 2.3522 + (Math.random()-0.5)*0.1 };
-  if (cityLower === "sydney") return { lat: -33.8688 + (Math.random()-0.5)*0.1, lng: 151.2093 + (Math.random()-0.5)*0.1 };
+  if (cityLower === "new york") return { lat: 40.7128 + latNoise, lng: -74.0060 + lngNoise };
+  if (cityLower === "london") return { lat: 51.5074 + latNoise, lng: -0.1278 + lngNoise };
+  if (cityLower === "tokyo") return { lat: 35.6895 + latNoise, lng: 139.6917 + lngNoise };
+  if (cityLower === "paris") return { lat: 48.8566 + latNoise, lng: 2.3522 + lngNoise };
+  if (cityLower === "sydney") return { lat: -33.8688 + latNoise, lng: 151.2093 + lngNoise };
   
+  // Fallback pseudo-random based on hash
+  const lat = (hash % 180000) / 1000 - 90 + latNoise; 
+  const lng = (hash % 360000) / 1000 - 180 + lngNoise;
   return { lat , lng };
 };
 
@@ -60,16 +61,15 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
     const fetchMapPins = async () => {
       const newMapPins: MapPinData[] = [];
 
-      // Process friends
       for (const friend of friends) {
-        if (friend.location && friend.location.city && friend.location.country) {
+        if (friend.location && (friend.location.city || (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number'))) {
           let coords: { lat: number; lng: number } | null = null;
-          // Correctly check if latitude and longitude are numbers (including 0)
           if (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number') {
              coords = { lat: friend.location.latitude, lng: friend.location.longitude };
-          } else {
+          } else if (friend.location.city && friend.location.country) { // Geocode only if city and country are present and no lat/lng
             coords = await geocodeLocation(friend.location.city, friend.location.country);
           }
+
           if (coords) {
             newMapPins.push({ 
               ...friend, 
@@ -80,28 +80,24 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
         }
       }
 
-      // Process current user
       if (currentUser && currentUser.currentLocation) {
         const userLoc = currentUser.currentLocation;
-        if (userLoc.city && userLoc.country) {
-          let userCoords: { lat: number; lng: number } | null = null;
-           // Correctly check if latitude and longitude are numbers (including 0)
-          if (typeof userLoc.latitude === 'number' && typeof userLoc.longitude === 'number') {
-            userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
-          } else {
-            userCoords = await geocodeLocation(userLoc.city, userLoc.country);
-          }
+        let userCoords: { lat: number; lng: number } | null = null;
+        if (typeof userLoc.latitude === 'number' && typeof userLoc.longitude === 'number') {
+          userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
+        } else if (userLoc.city && userLoc.country) { // Geocode only if city and country are present and no lat/lng
+          userCoords = await geocodeLocation(userLoc.city, userLoc.country);
+        }
 
-          if (userCoords) {
-            newMapPins.push({
-              id: currentUser.uid,
-              name: currentUser.name || 'Your Location',
-              avatarUrl: currentUser.avatarUrl,
-              location: userLoc,
-              position: userCoords,
-              isCurrentUser: true,
-            });
-          }
+        if (userCoords) {
+          newMapPins.push({
+            id: currentUser.uid,
+            name: currentUser.name || 'Your Location',
+            avatarUrl: currentUser.avatarUrl,
+            location: userLoc,
+            position: userCoords,
+            isCurrentUser: true,
+          });
         }
       }
       
@@ -116,7 +112,6 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
           setInitialCenter(firstPin.position);
           setInitialZoom(newMapPins.length === 1 ? 6 : 3); 
         } else {
-          // Fallback if firstPin or its position is somehow invalid
           setInitialCenter({ lat: 20, lng: 0 });
           setInitialZoom(2);
         }
@@ -188,7 +183,12 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
             >
               <div className="p-2 text-card-foreground bg-card rounded-md shadow-md max-w-xs">
                 <h3 className={`text-md font-semibold ${selectedPin.isCurrentUser ? 'text-accent' : 'text-primary'}`}>{selectedPin.name}</h3>
-                <p className="text-sm text-muted-foreground">{selectedPin.location.city}, {selectedPin.location.country}</p>
+                <p className="text-sm text-muted-foreground">
+                  {selectedPin.location.city}{selectedPin.location.country ? `, ${selectedPin.location.country}` : ''}
+                  {(selectedPin.location.latitude !== undefined && selectedPin.location.longitude !== undefined) && 
+                    <span className="block text-xs">({selectedPin.location.latitude.toFixed(4)}, {selectedPin.location.longitude.toFixed(4)})</span>
+                  }
+                </p>
                 {selectedPin.latestStatus && !selectedPin.isCurrentUser && (
                   <p className="text-xs mt-1 italic">&ldquo;{selectedPin.latestStatus.content}&rdquo;</p>
                 )}
@@ -200,3 +200,4 @@ export function MapDisplay({ friends, apiKey, currentUser }: MapDisplayProps) {
     </div>
   );
 }
+

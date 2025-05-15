@@ -46,10 +46,10 @@ export interface StatusUpdate {
 export interface Invite {
   id: string; // Firestore document ID
   code: string;
-  createdAt: Date; // Always Date object
-  expiresAt: Date; // Always Date object
+  createdAt: Date | Timestamp; // Allow Timestamp for Firestore, convert to Date in app
+  expiresAt: Date | Timestamp; // Allow Timestamp for Firestore, convert to Date in app
   createdBy: string; // User's UID
   status: 'pending' | 'used' | 'expired';
   usedBy?: string; // User's UID who used the invite
-  usedAt?: Date; // Always Date object
+  usedAt?: Date | Timestamp; // Allow Timestamp for Firestore, convert to Date in app
 }

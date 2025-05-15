@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,15 +15,20 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Navigation } from "lucide-react";
+import { MapPin, Navigation, Globe } from "lucide-react"; // Added Globe
 import type { UserLocation } from "@/types";
-// Toast is now handled by the parent component (ProfilePage)
-// import { useToast } from "@/hooks/use-toast"; 
-// import { useState, useTransition } from "react"; // Transition is now handled by parent
 
 const locationFormSchema = z.object({
   city: z.string().min(2, { message: "City must be at least 2 characters." }).max(50),
   country: z.string().min(2, { message: "Country must be at least 2 characters." }).max(50),
+  latitude: z.preprocess(
+    (val) => (val === "" ? undefined : parseFloat(String(val))),
+    z.number().min(-90).max(90).optional()
+  ),
+  longitude: z.preprocess(
+    (val) => (val === "" ? undefined : parseFloat(String(val))),
+    z.number().min(-180).max(180).optional()
+  ),
 });
 
 type LocationFormValues = z.infer<typeof locationFormSchema>;
@@ -30,32 +36,38 @@ type LocationFormValues = z.infer<typeof locationFormSchema>;
 interface LocationFormProps {
   currentLocation?: UserLocation;
   onUpdateLocation: (data: UserLocation) => Promise<void>;
-  isPending: boolean; // Added prop to control button state from parent
+  isPending: boolean;
 }
 
 export function LocationForm({ currentLocation, onUpdateLocation, isPending }: LocationFormProps) {
-  // const { toast } = useToast(); // Toast handled by parent
-  // const [isPending, startTransition] = useTransition(); // Transition handled by parent
-
   const form = useForm<LocationFormValues>({
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
       city: currentLocation?.city || "",
       country: currentLocation?.country || "",
+      latitude: currentLocation?.latitude,
+      longitude: currentLocation?.longitude,
     },
-    // Reset form if currentLocation changes externally
-    // This might be useful if user data is refreshed elsewhere
     values: { 
       city: currentLocation?.city || "",
       country: currentLocation?.country || "",
+      latitude: currentLocation?.latitude,
+      longitude: currentLocation?.longitude,
     }
   });
 
-  // No startTransition here, onSubmit directly calls the prop
   async function onSubmit(data: LocationFormValues) {
-    // Error handling and toast messages are now responsibility of the parent component
-    // that calls onUpdateLocation.
-    await onUpdateLocation(data);
+    const locationData: UserLocation = {
+      city: data.city,
+      country: data.country,
+    };
+    if (data.latitude !== undefined) {
+      locationData.latitude = data.latitude;
+    }
+    if (data.longitude !== undefined) {
+      locationData.longitude = data.longitude;
+    }
+    await onUpdateLocation(locationData);
   }
 
   return (
@@ -64,7 +76,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
         <CardTitle className="flex items-center text-2xl text-primary">
           <MapPin className="mr-2 h-6 w-6" /> Update Your Location
         </CardTitle>
-        <CardDescription>Let your friends know where you are in the world!</CardDescription>
+        <CardDescription>Let your friends know where you are. Provide city/country or precise coordinates.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -95,6 +107,41 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
                 </FormItem>
               )}
             />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="latitude"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-accent flex items-center">
+                      <Globe className="mr-1 h-4 w-4" /> Latitude (Optional)
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="number" step="any" placeholder="e.g., 35.6895" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input" disabled={isPending}/>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="longitude"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-accent flex items-center">
+                      <Globe className="mr-1 h-4 w-4" /> Longitude (Optional)
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="number" step="any" placeholder="e.g., 139.6917" {...field} onChange={e => field.onChange(e.target.value === "" ? undefined : e.target.value)} value={field.value ?? ""} className="bg-input" disabled={isPending}/>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              If latitude and longitude are provided, they will be used directly. Otherwise, location will be estimated from city/country.
+            </p>
             <Button 
               type="submit" 
               disabled={isPending} 

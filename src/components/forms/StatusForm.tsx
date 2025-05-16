@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,11 +15,11 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MessageSquare, Send } from "lucide-react";
+import { MessageSquare, Send, Loader2 } from "lucide-react"; // Added Loader2
 import { useToast } from "@/hooks/use-toast";
-import { useState, useTransition } from "react";
-import { addStatusUpdate } from "@/lib/firebase/statusUpdates"; // Import the function
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
+import { useTransition } from "react";
+import { addStatusUpdate } from "@/lib/firebase/statusUpdates"; 
+import { useAuth } from '@/contexts/AuthContext'; 
 
 const statusFormSchema = z.object({
   content: z.string().min(1, { message: "Status can't be empty." }).max(280, { message: "Status must be 280 characters or less." }),
@@ -26,15 +27,14 @@ const statusFormSchema = z.object({
 
 type StatusFormValues = z.infer<typeof statusFormSchema>;
 
-// Removed onPostStatus prop
 interface StatusFormProps {
-  // onPostStatus: (data: StatusFormValues) => Promise<void>; // Server action
+  onStatusPostedSuccess?: () => void; // New callback prop
 }
 
-export function StatusForm({ }: StatusFormProps) {
+export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
-  const { user } = useAuth(); // Corrected: Get the current user using 'user'
+  const { user } = useAuth(); 
 
   const form = useForm<StatusFormValues>({
     resolver: zodResolver(statusFormSchema),
@@ -44,7 +44,6 @@ export function StatusForm({ }: StatusFormProps) {
   });
 
   async function onSubmit(data: StatusFormValues) {
-    // Corrected: Check for 'user' instead of 'currentUser'
     if (!user) {
       toast({
         title: "Error",
@@ -56,7 +55,6 @@ export function StatusForm({ }: StatusFormProps) {
 
     startTransition(async () => {
       try {
-        // Call the Firebase function directly, use user.uid
         await addStatusUpdate({ userId: user.uid, content: data.content });
 
         toast({
@@ -64,7 +62,8 @@ export function StatusForm({ }: StatusFormProps) {
           description: "Your friends can now see your latest update.",
           variant: "default",
         });
-        form.reset(); // Clear the form after successful submission
+        form.reset(); 
+        onStatusPostedSuccess?.(); // Call the callback on success
       } catch (error) {
         toast({
           title: "Oops! Something went wrong.",
@@ -98,6 +97,7 @@ export function StatusForm({ }: StatusFormProps) {
                       placeholder="e.g., Exploring the streets of Rome! 🇮🇹"
                       className="resize-none bg-input min-h-[100px]"
                       {...field}
+                      disabled={isPending}
                     />
                   </FormControl>
                   <FormMessage />
@@ -110,7 +110,9 @@ export function StatusForm({ }: StatusFormProps) {
               className="w-full bg-gradient-to-r from-secondary to-pink-400 hover:from-secondary/90 hover:to-pink-400/90 text-secondary-foreground font-semibold py-3 text-lg transition-transform hover:scale-105"
             >
               {isPending ? (
-                <span className="animate-pulse">Posting...</span>
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Posting...
+                </>
               ) : (
                 <>
                  <Send className="mr-2 h-5 w-5" /> Post Update

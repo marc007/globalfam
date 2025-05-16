@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MessageSquare, Send, Loader2 } from "lucide-react"; // Added Loader2
+import { MessageSquare, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTransition } from "react";
 import { addStatusUpdate } from "@/lib/firebase/statusUpdates"; 
@@ -28,7 +28,7 @@ const statusFormSchema = z.object({
 type StatusFormValues = z.infer<typeof statusFormSchema>;
 
 interface StatusFormProps {
-  onStatusPostedSuccess?: () => void; // New callback prop
+  onStatusPostedSuccess?: () => void;
 }
 
 export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
@@ -44,7 +44,7 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
   });
 
   async function onSubmit(data: StatusFormValues) {
-    if (!user) {
+    if (!user || !user.uid) {
       toast({
         title: "Error",
         description: "You must be logged in to post a status.",
@@ -55,7 +55,11 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
 
     startTransition(async () => {
       try {
-        await addStatusUpdate({ userId: user.uid, content: data.content });
+        await addStatusUpdate({ 
+          userId: user.uid, 
+          content: data.content,
+          location: user.currentLocation // Pass the user's current location
+        });
 
         toast({
           title: "Status Posted! 🎉",
@@ -63,7 +67,7 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
           variant: "default",
         });
         form.reset(); 
-        onStatusPostedSuccess?.(); // Call the callback on success
+        onStatusPostedSuccess?.(); 
       } catch (error) {
         toast({
           title: "Oops! Something went wrong.",

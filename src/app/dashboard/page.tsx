@@ -36,31 +36,21 @@ export default function DashboardPage() {
       return;
     }
 
+    // Clean up old listeners before setting new ones
     activeListeners.forEach(unsub => unsub());
     const newListeners: (() => void)[] = [];
 
     const userProfileUnsub = listenToUserProfile(user.uid, (currentUserProfile) => {
       if (currentUserProfile?.friends) {
         const friendUids = currentUserProfile.friends;
-        const currentFriendIds = new Set(friends.map(f => f.id));
-        const newFriendUidsSet = new Set(friendUids);
-
-        // Filter out stale listeners and friends
-        const listenersToKeep: (() => void)[] = [];
-        const updatedFriendsState = friends.filter(friend => {
-          if (newFriendUidsSet.has(friend.id)) {
-            // Find existing listeners for this friend and keep them (this part is complex, for now, we're rebuilding)
-            return true; 
-          }
-          // For friends removed, their specific listeners should have been cleaned up by index.
-          // This part is simplified: we rebuild listeners based on current friendUids.
-          return false; 
-        });
         
         setFriends(prevFriends => {
           const existingFriendsMap = new Map(prevFriends.map(f => [f.id, f]));
           const freshFriendsArray: Friend[] = [];
+          const uidsToProcess = new Set(friendUids);
+          const currentFriendIds = new Set(prevFriends.map(f => f.id));
 
+          // Add new or existing friends
           friendUids.forEach(uid => {
             if (existingFriendsMap.has(uid)) {
               freshFriendsArray.push(existingFriendsMap.get(uid)!);
@@ -74,9 +64,14 @@ export default function DashboardPage() {
               });
             }
           });
-          return freshFriendsArray;
+          
+          // Filter out removed friends
+          return freshFriendsArray.filter(f => uidsToProcess.has(f.id));
         });
 
+        // Clean up listeners for friends who are no longer in the list
+        // This logic is implicitly handled by rebuilding listeners based on the new friendUids
+        
         const perFriendListeners: (() => void)[] = [];
         friendUids.forEach(friendUid => {
           const friendProfileUnsub = listenToUserProfile(friendUid, (friendProfile: UserProfile | null) => {
@@ -94,6 +89,7 @@ export default function DashboardPage() {
                 )
               );
             } else {
+              // If a friend's profile becomes null (e.g., deleted), remove them
               setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
             }
           });
@@ -107,36 +103,41 @@ export default function DashboardPage() {
                   : f
               )
             );
+            // If the latest status has a location, target the map view to it
+            if (latestStatus?.location && typeof latestStatus.location.latitude === 'number' && typeof latestStatus.location.longitude === 'number') {
+              setMapTargetView({
+                center: { lat: latestStatus.location.latitude, lng: latestStatus.location.longitude },
+                zoom: 12, // Or a preferred zoom level for viewing friend's status
+                key: Date.now() // Unique key to trigger map update
+              });
+            }
           });
           perFriendListeners.push(friendStatusUnsub);
         });
-        newListeners.push(...perFriendListeners); // Add per-friend listeners
+        newListeners.push(...perFriendListeners);
 
-      } else if (!currentUserProfile) {
+      } else if (!currentUserProfile) { // User profile doesn't exist or friends array is not there
         setFriends([]);
       }
     });
-    newListeners.push(userProfileUnsub); // Add the main user profile listener
+    newListeners.push(userProfileUnsub);
 
-    setActiveListeners(prev => { // Combine with existing if any, though usually this runs once per user change
-        prev.forEach(unsub => unsub()); // Clean up old before setting new
-        return newListeners;
-    });
-
+    setActiveListeners(newListeners); // Set the new batch of listeners
 
     return () => {
       newListeners.forEach(unsub => unsub());
     };
-  }, [user?.uid]); // Dependency on user.uid
+  }, [user?.uid]);
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-  const handleStatusSuccess = () => {
-    if (user?.currentLocation?.latitude != null && user?.currentLocation?.longitude != null) {
+  // This handler focuses the map on the current user's location after they post a status.
+  const handleCurrentUserStatusSuccess = () => {
+    if (user?.currentLocation && typeof user.currentLocation.latitude === 'number' && typeof user.currentLocation.longitude === 'number') {
       setMapTargetView({
         center: { lat: user.currentLocation.latitude, lng: user.currentLocation.longitude },
-        zoom: 12, // Desired zoom level after status post
-        key: Date.now() // Unique key to trigger update in MapDisplay
+        zoom: 12, 
+        key: Date.now() 
       });
     }
   };
@@ -194,7 +195,7 @@ export default function DashboardPage() {
             <MessageSquare className="h-8 w-8 text-green-400" />
             <h2 className="text-3xl font-semibold">Share Your Vibe</h2>
           </div>
-          <StatusForm onStatusPostedSuccess={handleStatusSuccess} /> 
+          <StatusForm onStatusPostedSuccess={handleCurrentUserStatusSuccess} /> 
         </section>
       </div>
     </div>

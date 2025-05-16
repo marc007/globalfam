@@ -36,7 +36,7 @@ export interface Friend {
   id: string; // Friend's UID
   name: string;
   avatarUrl?: string;
-  location: UserLocation; 
+  location: UserLocation;
   latestStatus?: StatusUpdate;
 }
 
@@ -45,6 +45,7 @@ export interface StatusUpdate {
   userId: string; // User's UID
   content: string;
   createdAt: Date; // Always Date object in application code after conversion from Timestamp
+  location?: UserLocation | null; // Location where the status was posted
 }
 
 // Invite as stored in Firestore (uses Timestamp)
@@ -63,9 +64,9 @@ export interface Invite {
   id: string; // Firestore document ID
   code: string;
   creatorUid: string;
-  createdAt: Date; 
-  expiresAt: Date; 
+  createdAt: Date;
+  expiresAt: Date;
   status: 'pending' | 'used' | 'expired';
-  usedByUid?: string; 
-  usedAt?: Date; 
+  usedByUid?: string;
+  usedAt?: Date;
 }

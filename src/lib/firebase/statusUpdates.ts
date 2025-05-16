@@ -1,19 +1,32 @@
+
 import { db } from "./config";
 import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, Timestamp } from "firebase/firestore";
-import type { StatusUpdate } from "@/types";
+import type { StatusUpdate, UserLocation } from "@/types";
 
 interface AddStatusUpdateData {
   userId: string;
   content: string;
+  location?: UserLocation | null; // Add location to the data
 }
 
-export const addStatusUpdate = async ({ userId, content }: AddStatusUpdateData) => {
+export const addStatusUpdate = async ({ userId, content, location }: AddStatusUpdateData) => {
   try {
-    const docRef = await addDoc(collection(db, "statusUpdates"), {
+    const statusData: {
+      userId: string;
+      content: string;
+      createdAt: any; // serverTimestamp() type
+      location?: UserLocation | null;
+    } = {
       userId,
       content,
       createdAt: serverTimestamp(),
-    });
+    };
+
+    if (location) {
+      statusData.location = location;
+    }
+
+    const docRef = await addDoc(collection(db, "statusUpdates"), statusData);
     console.log("Status update written with ID: ", docRef.id);
     return docRef.id;
   } catch (e) {
@@ -42,12 +55,11 @@ export const listenToLatestUserStatus = (
     const doc = snapshot.docs[0];
     const data = doc.data();
     
-    let createdAtDate = new Date(); // Default to now if undefined for some reason
+    let createdAtDate = new Date(); 
     if (data.createdAt instanceof Timestamp) {
       createdAtDate = data.createdAt.toDate();
-    } else if (data.createdAt) { // Handle cases where it might already be a JS Date (less likely with serverTimestamp but good for robustness)
+    } else if (data.createdAt) { 
        try {
-        // Attempt to convert if it's a recognizable date string or number, though Timestamp is expected
         const parsedDate = new Date(data.createdAt);
         if (!isNaN(parsedDate.getTime())) {
           createdAtDate = parsedDate;
@@ -62,6 +74,7 @@ export const listenToLatestUserStatus = (
       userId: data.userId,
       content: data.content,
       createdAt: createdAtDate,
+      location: data.location || null, // Include location from Firestore
     };
     onUpdate(status);
   }, (error) => {

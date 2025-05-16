@@ -8,23 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Mail, Link as LinkIcon, Copy, CheckCircle, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Invite } from '@/types';
-
-// Mock server action for generating invite - to be replaced with Firebase logic
-async function generateInviteLink(userId: string): Promise<Invite> {
-  console.log(`Mock Server Action: Generating invite for user ${userId}`);
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-  
-  const newInvite: Invite = {
-    id: `invite_${Math.random().toString(36).substring(2, 10)}`,
-    code: Math.random().toString(36).substring(2, 12).toUpperCase(),
-    createdAt: new Date(),
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-    createdBy: userId, // This should be user.uid
-  };
-  return newInvite;
-}
-
+// Import the new Firebase invite function
+import { createInviteLinkDocument } from '@/lib/firebase/invites';
 
 export default function InvitePage() {
   const { user, isLoading } = useAuth();
@@ -43,18 +28,27 @@ export default function InvitePage() {
   }, [user, isLoading, router]);
 
   const handleGenerateLink = async () => {
-    if (!user || !user.uid) return; // Check for user.uid
+    if (!user || !user.uid) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to generate an invite link.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsGenerating(true);
     setCopied(false);
     try {
-      const invite = await generateInviteLink(user.uid); // Use user.uid
-      const fullLink = `${window.location.origin}/join?code=${invite.code}`; // TODO: Create /join page
+      // Call the Firebase function to create the invite document
+      const inviteCode = await createInviteLinkDocument(user.uid);
+      const fullLink = `${window.location.origin}/join?code=${inviteCode}`; // Construct the link with the code
       setInviteLink(fullLink);
       toast({
         title: "Invite Link Generated! 🔗",
         description: "Share this link with your friends to join GlobalFam.",
       });
     } catch (error) {
+      console.error("Error generating invite link:", error);
       toast({
         title: "Error Generating Link",
         description: "Could not generate an invite link. Please try again.",
@@ -91,7 +85,7 @@ export default function InvitePage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center space-y-12">
+    <div className="flex flex-col items-center justify-center space-y-12 py-12 px-4">
       <section className="text-center">
         <Mail className="h-20 w-20 text-accent mx-auto mb-6 animate-bounce" style={{animationDuration: '1.5s'}} />
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2 text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">

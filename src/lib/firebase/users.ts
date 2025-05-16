@@ -1,6 +1,14 @@
 
 import { db } from './config';
-import { doc, updateDoc, arrayUnion, getDoc, setDoc, Timestamp, onSnapshot, Unsubscribe } from 'firebase/firestore'; // Added onSnapshot and Unsubscribe
+import { doc, updateDoc, arrayUnion, getDoc, setDoc, Timestamp, onSnapshot, Unsubscribe } from 'firebase/firestore';
+
+// Define UserLocation based on your provided structure
+export interface UserLocation {
+  city: string;
+  country: string;
+  latitude?: number;
+  longitude?: number;
+}
 
 // Define User Profile structure (can be expanded)
 export interface UserProfile {
@@ -10,30 +18,49 @@ export interface UserProfile {
   photoURL?: string | null;
   createdAt?: Timestamp;
   friends?: string[]; // Array of friend UIDs
-  // Add other fields like lastKnownLocation, status, etc. as needed
+  currentLocation?: UserLocation | null; // Added currentLocation
+  // Add other fields like status, etc. as needed
 }
 
 // Function to create or update a user profile (e.g., on signup/login)
+// IMPORTANT: Ensure that when users update their location, they write to the 'currentLocation' field in their UserProfile document.
 export const updateUserProfile = async (uid: string, data: Partial<UserProfile>): Promise<void> => {
   const userRef = doc(db, 'users', uid);
   try {
-    // Use setDoc with merge: true to create or update, and initialize createdAt only if new
     const userSnap = await getDoc(userRef);
     if (!userSnap.exists()) {
       await setDoc(userRef, { 
         ...data, 
         uid, 
         createdAt: Timestamp.now(),
-        friends: [] // Initialize friends array if new user
+        friends: [], // Initialize friends array if new user
+        currentLocation: data.currentLocation !== undefined ? data.currentLocation : null, // Initialize currentLocation
       }, { merge: true });
       console.log(`User profile created for ${uid}`);
     } else {
-      await setDoc(userRef, data, { merge: true });
+      // When updating, ensure currentLocation is explicitly handled if it can be set to null
+      const updateData = { ...data };
+      if (data.currentLocation === null) {
+        updateData.currentLocation = null;
+      }
+      await setDoc(userRef, updateData, { merge: true });
       console.log(`User profile updated for ${uid}`);
     }
   } catch (error) {
     console.error('Error updating user profile:', error);
     throw new Error('Failed to update user profile.');
+  }
+};
+
+// Specific function to update only the photoURL (avatar)
+export const updateUserPhotoURL = async (uid: string, photoURL: string | null): Promise<void> => {
+  try {
+    await updateUserProfile(uid, { photoURL });
+    console.log(`User photoURL updated for ${uid}`);
+  } catch (error) {
+    console.error('Error updating user photoURL:', error);
+    // Re-throw or handle more specifically if needed
+    throw new Error('Failed to update user photoURL.');
   }
 };
 
@@ -62,6 +89,7 @@ export const listenToUserProfile = (
   const userRef = doc(db, 'users', uid);
   const unsubscribe = onSnapshot(userRef, (docSnap) => {
     if (docSnap.exists()) {
+      // Cast to UserProfile which now includes currentLocation
       callback(docSnap.data() as UserProfile);
     } else {
       console.log('No such user profile for UID during listener setup:', uid);
@@ -69,51 +97,34 @@ export const listenToUserProfile = (
     }
   }, (error) => {
     console.error("Error listening to user profile:", error);
-    // Optionally, you could call the callback with an error indicator or a specific null value
-    // callback(null); // Or some error state object
   });
 
   return unsubscribe; // Return the unsubscribe function
 };
 
 
-// Function to establish a mutual friend connection
-// This client-side function is less critical now as the Cloud Function handles the core logic.
-// It can be kept for other purposes or simplified if only used by client after Cloud Function.
+// Client-side addFriendConnection (Cloud Function is primary for DB updates)
 export const addFriendConnection = async (userId1: string, userId2: string): Promise<void> => {
   if (userId1 === userId2) {
     console.warn("User cannot add themselves as a friend.");
     return; 
   }
-
   try {
     const user1Profile = await getUserProfile(userId1);
     const user2Profile = await getUserProfile(userId2);
-
     if (!user1Profile) {
-      await updateUserProfile(userId1, { uid: userId1, friends: [] });
-       console.log(`Initialized profile for user ${userId1} during friend connection attempt.`);
+      await updateUserProfile(userId1, { uid: userId1, friends: [], currentLocation: null });
     } else if (!user1Profile.friends) {
         await updateDoc(doc(db, 'users', userId1), { friends: [] });
     }
-
     if (!user2Profile) {
-      await updateUserProfile(userId2, { uid: userId2, friends: [] });
-      console.log(`Initialized profile for user ${userId2} during friend connection attempt.`);
+      await updateUserProfile(userId2, { uid: userId2, friends: [], currentLocation: null });
     } else if (!user2Profile.friends) {
          await updateDoc(doc(db, 'users', userId2), { friends: [] });
     }
-    
-    console.log(`Client-side: addFriendConnection called for ${userId1} and ${userId2}. Cloud Function will handle DB updates.`);
-
+    console.log(`Client-side: addFriendConnection called for ${userId1} and ${userId2}. Cloud Function handles main DB updates.`);
   } catch (error) {
-    console.error("Error in client-side addFriendConnection (post-Cloud Function setup):", error);
+    console.error("Error in client-side addFriendConnection:", error);
     throw new Error("Client-side friend setup encountered an issue.");
   }
 };
-
-// You can add other user-related functions here, like:
-// - removeFriendConnection
-// - getUserFriends (to fetch profiles of friends)
-// - updateUserLocation
-// - updateUserStatus

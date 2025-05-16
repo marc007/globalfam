@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { uploadAvatar } from '@/lib/firebase/storage';
-import { updateUserAvatarUrl } from '@/lib/firebase/users';
+// Changed from updateUserAvatarUrl to updateUserPhotoURL
+import { updateUserPhotoURL } from '@/lib/firebase/users'; 
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -49,6 +50,9 @@ export default function ProfilePage() {
     if (!user || !user.uid) return;
     setIsUpdatingLocation(true);
     try {
+      // Assuming updateUserProfile from users.ts is the source of truth for profile data
+      // await updateUserProfile(user.uid, { currentLocation: data }); 
+      // For now, using the local client version if it's specifically for this page's logic
       await updateUserLocationClient(user.uid, data);
       setUser(prevUser => prevUser ? ({ ...prevUser, currentLocation: data }) : null);
       toast({
@@ -76,8 +80,12 @@ export default function ProfilePage() {
     setIsUploadingAvatar(true);
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
-      await updateUserAvatarUrl(user.uid, downloadURL);
-      setUser(prevUser => prevUser ? ({ ...prevUser, avatarUrl: downloadURL }) : null);
+      // Changed from updateUserAvatarUrl to updateUserPhotoURL
+      await updateUserPhotoURL(user.uid, downloadURL); 
+      // Update local user state in AuthContext to reflect new avatar immediately
+      // Ensure your AuthContext's user object includes photoURL or a similar field.
+      // Assuming 'avatarUrl' in AuthContext's user state corresponds to 'photoURL' in Firestore profile
+      setUser(prevUser => prevUser ? ({ ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL }) : null);
 
       toast({
         title: "Avatar Updated!",
@@ -96,7 +104,7 @@ export default function ProfilePage() {
   };
 
   const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'GF';
+    if (!name) return 'GF'; // GlobalFam initials
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
@@ -110,8 +118,12 @@ export default function ProfilePage() {
   }
 
   if (!user) {
-    return null;
+    return null; // Handled by useEffect redirect
   }
+  
+  // Use user.displayName and user.photoURL for consistency with UserProfile
+  const displayName = user.displayName || user.email; // Fallback to email if displayName isn't set
+  const photoURL = user.photoURL || user.avatarUrl; // Use photoURL if available from Auth, fallback to avatarUrl if that's what's in local state
 
   const renderLocationForm = () => {
     if (!mapsApiKey) {
@@ -140,19 +152,18 @@ export default function ProfilePage() {
     <div className="space-y-12">
       <section className="flex flex-col items-center text-center">
         <label htmlFor="avatar-upload" className="cursor-pointer relative group mb-6">
-          <Avatar key={user.avatarUrl || user.uid} className="h-32 w-32 border-4 border-primary shadow-lg relative">
+          <Avatar key={photoURL || user.uid} className="h-32 w-32 border-4 border-primary shadow-lg relative">
              {isUploadingAvatar ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10 rounded-full">
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
                 </div>
              ) : null}
             <AvatarImage
-              src={user.avatarUrl}
-              alt={user.name ?? 'User'}
+              src={photoURL} // Use photoURL
+              alt={displayName ?? 'User'}
               className={isUploadingAvatar ? 'opacity-50' : ''}
-              data-ai-hint="profile avatar"
             />
-            <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(user.name)}</AvatarFallback>
+            <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(displayName)}</AvatarFallback>
           </Avatar>
            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <Camera className="h-8 w-8" />
@@ -168,7 +179,7 @@ export default function ProfilePage() {
         />
 
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
-          {user.name || 'Your Profile'}
+          {displayName || 'Your Profile'}
         </h1>
         <p className="text-lg text-muted-foreground mt-1">{user.email}</p>
       </section>

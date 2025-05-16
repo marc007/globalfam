@@ -7,13 +7,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { FriendList } from '@/components/friends/FriendList';
 import { MapDisplay } from '@/components/map/MapDisplay';
 import { StatusForm } from '@/components/forms/StatusForm';
-import type { Friend, User } from '@/types'; // UserLocation is part of Friend via UserProfileData
+import type { Friend } from '@/types'; 
 import { Loader2, Users, Map as MapIcon, MessageSquare } from 'lucide-react';
 
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
-import { listenToUserProfile } from '@/lib/firebase/users';
-import { listenToLatestUserStatus } from '@/lib/firebase/statusUpdates';
+import { listenToUserProfile, UserProfile } from '@/lib/firebase/users'; // Import UserProfile type
+import { listenToLatestUserStatus, StatusUpdate } from '@/lib/firebase/statusUpdates'; // Import StatusUpdate type
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -31,89 +31,104 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user?.uid) {
-      setFriends([]); // Clear friends if user logs out
-      activeListeners.forEach(unsub => unsub()); // Unsubscribe from all existing listeners
+      setFriends([]);
+      activeListeners.forEach(unsub => unsub());
       setActiveListeners([]);
       return;
     }
 
-    // Clean up previous listeners before starting new ones
+    // Clean up previous top-level listener and per-friend listeners
     activeListeners.forEach(unsub => unsub());
-    const newListenersContainer: (() => void)[] = [];
+    const newTopLevelListeners: (() => void)[] = [];
 
-    const friendsCollectionRef = collection(db, 'users', user.uid, 'friends');
-    const friendsListUnsub = onSnapshot(friendsCollectionRef, (friendsSnapshot) => {
-      const friendUids = friendsSnapshot.docs.map(doc => doc.id);
+    // Listener for the current user's friends list (their UIDs)
+    // Assuming friends UIDs are stored directly in the user's profile `friends` array.
+    const userProfileUnsub = listenToUserProfile(user.uid, (currentUserProfile) => {
+      if (currentUserProfile && currentUserProfile.friends) {
+        const friendUids = currentUserProfile.friends;
 
-      // Further cleanup is implicitly handled by rebuilding listeners.
-      // When friendUids changes, old per-friend listeners related to removed friends
-      // are part of the 'activeListeners' that get unsubscribed at the start of this effect
-      // or when user.uid changes. The new 'activeListeners' will only contain listeners
-      // for the current set of friends.
+        // Unsubscribe from listeners for friends who are no longer in the list
+        // This part requires careful management. For now, we are rebuilding all per-friend listeners.
+        // A more optimized approach would selectively unsubscribe.
+        
+        // Set initial state for friends or update existing ones
+        setFriends(prevFriends => {
+          const existingFriendIds = new Set(prevFriends.map(f => f.id));
+          const newFriendUids = new Set(friendUids);
+          
+          // Remove friends no longer in the list
+          const updatedFriends = prevFriends.filter(f => newFriendUids.has(f.id));
+          
+          // Add new friends or update existing ones (initially with loading state)
+          friendUids.forEach(uid => {
+            if (!existingFriendIds.has(uid)) {
+              updatedFriends.push({
+                id: uid,
+                name: 'Loading...',
+                avatarUrl: undefined,
+                location: { city: 'Unknown', country: '' }, 
+                latestStatus: undefined,
+              });
+            }
+          });
+          return updatedFriends;
+        });
 
-      const initialFriendData = friendUids.map(uid => ({
-        id: uid,
-        name: 'Loading...',
-        avatarUrl: undefined,
-        location: { city: 'Unknown', country: '' }, 
-        latestStatus: undefined,
-      }));
-      setFriends(initialFriendData);
 
-      const currentPerFriendListeners: (() => void)[] = [];
+        const currentPerFriendListeners: (() => void)[] = [];
+        friendUids.forEach(friendUid => {
+          // Listener for each friend's profile
+          const friendProfileUnsub = listenToUserProfile(friendUid, (friendProfile: UserProfile | null) => {
+            if (friendProfile) {
+              setFriends(prevFriends =>
+                prevFriends.map(f =>
+                  f.id === friendUid
+                    ? {
+                        ...f,
+                        name: friendProfile.displayName || 'Unknown Name', // Use displayName
+                        avatarUrl: friendProfile.photoURL || undefined,    // Use photoURL
+                        // currentLocation is now part of UserProfile from users.ts
+                        location: friendProfile.currentLocation || { city: 'Location not set', country: '' },
+                      }
+                    : f
+                )
+              );
+            } else {
+              // If a friend's profile is removed or doesn't exist, remove them from the list
+              setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
+            }
+          });
+          currentPerFriendListeners.push(friendProfileUnsub);
 
-      friendUids.forEach(friendUid => {
-        const profileUnsub = listenToUserProfile(friendUid, (friendProfile) => {
-          if (friendProfile) {
+          // Listener for each friend's latest status
+          const friendStatusUnsub = listenToLatestUserStatus(friendUid, (latestStatus: StatusUpdate | null) => {
             setFriends(prevFriends =>
               prevFriends.map(f =>
                 f.id === friendUid
-                  ? {
-                      ...f,
-                      name: friendProfile.name || 'Unknown',
-                      avatarUrl: friendProfile.avatarUrl,
-                      location: friendProfile.currentLocation || { city: 'Not set', country: '' },
-                    }
+                  ? { ...f, latestStatus: latestStatus || undefined }
                   : f
               )
             );
-          } else {
-             setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
-          }
+          });
+          currentPerFriendListeners.push(friendStatusUnsub);
         });
-        currentPerFriendListeners.push(profileUnsub);
+        // Combine the main user profile listener with per-friend listeners
+        setActiveListeners([userProfileUnsub, ...currentPerFriendListeners]);
 
-        const statusUnsub = listenToLatestUserStatus(friendUid, (latestStatus) => {
-          setFriends(prevFriends =>
-            prevFriends.map(f =>
-              f.id === friendUid
-                ? { ...f, latestStatus: latestStatus || undefined }
-                : f
-            )
-          );
-        });
-        currentPerFriendListeners.push(statusUnsub);
-      });
-      // Rebuild activeListeners with the main listener and new per-friend listeners
-      setActiveListeners([friendsListUnsub, ...currentPerFriendListeners]);
-    }, (error) => {
-      console.error("Error listening to friends list:", error);
+      } else if (!currentUserProfile) {
+        // Current user's profile doesn't exist or was removed
+        setFriends([]);
+        // activeListeners already cleared at top or by previous iteration
+      }
     });
-
-    newListenersContainer.push(friendsListUnsub);
-    // setActiveListeners is called inside onSnapshot to ensure it has the latest per-friend listeners.
-    // However, we must initialize it here too in case the onSnapshot callback doesn't fire immediately
-    // or if there are no friends initially.
-    setActiveListeners(newListenersContainer);
-
+    newTopLevelListeners.push(userProfileUnsub);
+    setActiveListeners(newTopLevelListeners); // Set initial listener(s)
 
     return () => {
+      // This will now include userProfileUnsub and all per-friend listeners from the latest execution
       activeListeners.forEach(unsub => unsub());
-      // newListenersContainer only contains friendsListUnsub at this point from outside the snapshot,
-      // ensure anything pushed into it is cleaned.
-      // The full set of listeners is managed by `activeListeners` state.
     };
-  }, [user?.uid]); 
+  }, [user?.uid]);
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -138,7 +153,8 @@ export default function DashboardPage() {
     <div className="space-y-12">
       <section className="text-center">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
-          Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">{user.name || 'Global Explorer'}</span>!
+          {/* Use user.displayName from AuthContext if available, or fallback */}
+          Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">{user.displayName || user.email || 'Global Explorer'}</span>!
         </h1>
         <p className="text-lg text-muted-foreground">Here's what your GlobalFam is up to.</p>
       </section>

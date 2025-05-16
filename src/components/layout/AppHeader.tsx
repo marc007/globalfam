@@ -40,12 +40,7 @@ export function AppHeader() {
             <div className="h-8 w-20 animate-pulse rounded-md bg-muted"></div>
           ) : user ? (
             <>
-              <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-accent transition-colors">
-                <Link href="/dashboard"><Home className="mr-1 h-4 w-4" /> Dashboard</Link>
-              </Button>
-              <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-accent transition-colors">
-                <Link href="/invite"><Mail className="mr-1 h-4 w-4" /> Invite</Link>
-              </Button>
+              {/* Dashboard and Invite buttons removed from here */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -65,6 +60,14 @@ export function AppHeader() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => router.push('/dashboard')}>
+                    <Home className="mr-2 h-4 w-4" />
+                    Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push('/invite')}>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Invite Friends
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push('/profile')}>
                     <UserCircle className="mr-2 h-4 w-4" />
                     Profile

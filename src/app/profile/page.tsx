@@ -5,19 +5,20 @@ import { useEffect, useState, ChangeEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { LocationForm } from '@/components/forms/LocationForm';
-import { ChangePasswordForm } from '@/components/forms/ChangePasswordForm'; // Import new form
+import { ChangePasswordForm } from '@/components/forms/ChangePasswordForm';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera, AlertTriangle, KeyRound } from 'lucide-react';
+import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera, AlertTriangle, KeyRound, Save, X, Edit } from 'lucide-react';
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // Import Input
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { uploadAvatar } from '@/lib/firebase/storage';
 import { updateUserPhotoURL as updateUserFirestorePhotoURL } from '@/lib/firebase/users'; 
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { updateProfile, getAuth } from 'firebase/auth'; // Import updateProfile and getAuth from firebase/auth
+import { updateProfile, getAuth } from 'firebase/auth'; 
 
 
 async function updateUserLocationClient(userId: string, location: UserLocation): Promise<void> {
@@ -31,7 +32,7 @@ async function updateUserLocationClient(userId: string, location: UserLocation):
 
 
 export default function ProfilePage() {
-  const { user, isLoading, logout, setUser } = useAuth();
+  const { user, isLoading, logout, setUser, updateUserDisplayName } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
@@ -39,11 +40,17 @@ export default function ProfilePage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editableName, setEditableName] = useState(user?.displayName || user?.name || "");
+  const [isSavingName, setIsSavingName] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
     if (!isLoading && !user) {
       router.replace('/');
+    }
+    if (user) {
+      setEditableName(user.displayName || user.name || "");
     }
   }, [user, isLoading, router]);
 
@@ -52,7 +59,6 @@ export default function ProfilePage() {
     setIsUpdatingLocation(true);
     try {
       await updateUserLocationClient(user.uid, data);
-      // Update user context with new location
       setUser(prevUser => {
         if (!prevUser) return null;
         return { ...prevUser, currentLocation: data };
@@ -94,13 +100,9 @@ export default function ProfilePage() {
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
       
-      // Update Firebase Auth profile
       await updateProfile(firebaseCurrentUser, { photoURL: downloadURL });
-
-      // Update Firestore document
       await updateUserFirestorePhotoURL(user.uid, downloadURL); 
       
-      // Update local AuthContext state
       setUser(prevUser => {
         if (!prevUser) return null;
         return { ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL };
@@ -122,6 +124,31 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSaveName = async () => {
+    if (!user || !editableName.trim() || editableName.trim() === (user.displayName || user.name)) {
+      setIsEditingName(false);
+      return;
+    }
+    setIsSavingName(true);
+    try {
+      await updateUserDisplayName(editableName.trim());
+      toast({
+        title: "Display Name Updated!",
+        description: `Your display name is now ${editableName.trim()}.`,
+      });
+      setIsEditingName(false);
+    } catch (error) {
+      console.error("Failed to update display name:", error);
+      toast({
+        title: "Update Failed",
+        description: "Could not update your display name. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
   const getInitials = (name: string | null | undefined) => {
     if (!name) return 'GF';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -140,7 +167,7 @@ export default function ProfilePage() {
     return null; 
   }
   
-  const displayName = user.name || user.displayName || user.email; 
+  const currentDisplayName = user.name || user.displayName || user.email; 
   const photoURL = user.avatarUrl || user.photoURL; 
 
   const renderLocationForm = () => {
@@ -178,11 +205,11 @@ export default function ProfilePage() {
              ) : null}
             <AvatarImage
               src={photoURL} 
-              alt={displayName ?? 'User'}
+              alt={currentDisplayName ?? 'User'}
               className={isUploadingAvatar ? 'opacity-50' : ''}
               data-ai-hint="profile avatar"
             />
-            <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(displayName)}</AvatarFallback>
+            <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(currentDisplayName)}</AvatarFallback>
           </Avatar>
            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <Camera className="h-8 w-8" />
@@ -197,9 +224,36 @@ export default function ProfilePage() {
           disabled={isUploadingAvatar}
         />
 
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
-          {displayName || 'Your Profile'}
-        </h1>
+        {!isEditingName ? (
+          <div className="flex items-center gap-2 group">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
+              {currentDisplayName || 'Your Profile'}
+            </h1>
+            <Button variant="ghost" size="icon" onClick={() => { setIsEditingName(true); setEditableName(currentDisplayName || ""); }} className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <Edit className="h-6 w-6 text-accent" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2 w-full max-w-md">
+            <Input
+              type="text"
+              value={editableName}
+              onChange={(e) => setEditableName(e.target.value)}
+              className="text-4xl md:text-5xl font-bold tracking-tight text-center bg-transparent border-2 border-accent rounded-md p-2 text-foreground"
+              disabled={isSavingName}
+            />
+            <div className="flex gap-2 mt-2">
+              <Button onClick={handleSaveName} disabled={isSavingName || !editableName.trim() || editableName.trim() === (user.displayName || user.name)} className="bg-green-500 hover:bg-green-600 text-white">
+                {isSavingName ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save
+              </Button>
+              <Button variant="outline" onClick={() => setIsEditingName(false)} disabled={isSavingName}>
+                <X className="mr-2 h-4 w-4" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
         <p className="text-lg text-muted-foreground mt-1">{user.email}</p>
       </section>
 
@@ -222,7 +276,7 @@ export default function ProfilePage() {
                 <h4 className="font-semibold text-accent flex items-center">
                     <UserCircle className="mr-2 h-5 w-5" /> Display Name
                 </h4>
-                <p className="text-foreground">{displayName || 'Not set'}</p>
+                <p className="text-foreground">{currentDisplayName || 'Not set'}</p>
               </div>
                <div>
                 <h4 className="font-semibold text-accent flex items-center">
@@ -244,3 +298,5 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+    

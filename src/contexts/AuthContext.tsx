@@ -44,37 +44,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (userDocSnap.exists()) {
           const firestoreUser = userDocSnap.data() as UserProfileData;
+          // Prioritize Firebase Auth photoURL, then Firestore avatarUrl
+          const finalAvatarUrl = firebaseUser.photoURL || firestoreUser.avatarUrl;
           setUser({
             uid: firebaseUser.uid,
             name: firestoreUser.name || firebaseUser.displayName,
             email: firebaseUser.email,
-            avatarUrl: firestoreUser.avatarUrl || firebaseUser.photoURL,
+            avatarUrl: finalAvatarUrl, // Use the determined finalAvatarUrl
             currentLocation: firestoreUser.currentLocation,
-            // Add displayName and photoURL from FirebaseUser as fallbacks if needed by other parts of User type
             displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
+            photoURL: firebaseUser.photoURL, // Keep Firebase Auth photoURL as the primary reference
           });
         } else {
-           const newUserProfileData = { // Use a more descriptive name
+           const defaultAvatar = `https://placehold.co/100x100.png?text=${(firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'NU').substring(0,2).toUpperCase()}`;
+           const newUserProfileData = { 
             uid: firebaseUser.uid,
             name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User',
             email: firebaseUser.email,
-            avatarUrl: firebaseUser.photoURL || `https://placehold.co/100x100.png?text=${(firebaseUser.displayName || 'NU').substring(0,2).toUpperCase()}`,
-            // Explicitly include displayName and photoURL if they are part of the User type used in setUser
+            avatarUrl: firebaseUser.photoURL || defaultAvatar, // Prioritize Firebase Auth photoURL then default for the custom avatarUrl field
             displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
+            photoURL: firebaseUser.photoURL, // Store Firebase Auth photoURL
           };
           await setDoc(doc(db, "users", firebaseUser.uid), {
-            uid: newUserProfileData.uid, // ensure uid is written
+            uid: newUserProfileData.uid, 
             name: newUserProfileData.name,
             email: newUserProfileData.email,
-            avatarUrl: newUserProfileData.avatarUrl, // Firestore specific avatar
+            avatarUrl: newUserProfileData.avatarUrl, // This is our custom field, mirrors photoURL or default
+            photoURL: newUserProfileData.photoURL, // Explicitly store photoURL in Firestore if needed
             createdAt: new Date(),
-            // ensure UserProfile specific fields like friends, currentLocation are initialized
             friends: [],
             currentLocation: null,
           });
-          setUser(newUserProfileData as User); // Cast to User, ensure User type matches
+          setUser(newUserProfileData as User); 
         }
       } else {
         setUser(null);
@@ -90,24 +91,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const defaultAvatar = `https://placehold.co/100x100.png?text=${name.substring(0,2).toUpperCase()}`;
+      // Update Firebase Auth profile
       await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
       
+      // Create Firestore document
       const userDocRef = doc(db, "users", userCredential.user.uid);
       const newUserProfileData = {
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: defaultAvatar, 
+        avatarUrl: defaultAvatar, // Custom field, matches Firebase Auth photoURL initially
+        photoURL: defaultAvatar, // Firebase Auth standard field
         createdAt: new Date(),
         friends: [],
         currentLocation: null,
-        // Include FirebaseUser's displayName and photoURL if your User type expects them
-        displayName: name,
-        photoURL: defaultAvatar,
+        displayName: name, 
       };
       await setDoc(userDocRef, newUserProfileData);
       
-       setUser(newUserProfileData as User);
+      setUser(newUserProfileData as User);
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
@@ -121,6 +123,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle fetching and setting the user state
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {

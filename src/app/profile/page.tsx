@@ -17,6 +17,7 @@ import { uploadAvatar } from '@/lib/firebase/storage';
 import { updateUserPhotoURL as updateUserFirestorePhotoURL } from '@/lib/firebase/users'; 
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { updateProfile, getAuth } from 'firebase/auth'; // Import updateProfile and getAuth from firebase/auth
 
 
 async function updateUserLocationClient(userId: string, location: UserLocation): Promise<void> {
@@ -74,6 +75,17 @@ export default function ProfilePage() {
 
   const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
     if (!user || !user.uid) return;
+    const firebaseAuth = getAuth();
+    const firebaseCurrentUser = firebaseAuth.currentUser;
+
+    if (!firebaseCurrentUser) {
+      toast({
+        title: "Error",
+        description: "No authenticated user found. Please re-login.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const file = event.target.files?.[0];
     if (!file) return;
@@ -81,11 +93,16 @@ export default function ProfilePage() {
     setIsUploadingAvatar(true);
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
+      
+      // Update Firebase Auth profile
+      await updateProfile(firebaseCurrentUser, { photoURL: downloadURL });
+
+      // Update Firestore document
       await updateUserFirestorePhotoURL(user.uid, downloadURL); 
       
+      // Update local AuthContext state
       setUser(prevUser => {
         if (!prevUser) return null;
-        // Ensure both avatarUrl (used by some local components) and photoURL (Firebase standard) are updated
         return { ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL };
       });
 

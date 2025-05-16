@@ -10,6 +10,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
+  EmailAuthProvider, // Import EmailAuthProvider
+  reauthenticateWithCredential, // Import reauthenticateWithCredential
+  updatePassword as firebaseUpdatePassword, // Import updatePassword
   type User as FirebaseUser
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
@@ -23,6 +26,7 @@ interface AuthContextType {
   signUp: (name: string, email: string, password: string) => Promise<FirebaseUser | null>;
   signIn: (email: string, password: string) => Promise<FirebaseUser | null>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>; // New method
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,28 +43,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const userDocSnap = await getDoc(userDocRef);
 
         if (userDocSnap.exists()) {
-          const firestoreUser = userDocSnap.data() as UserProfileData; // Explicitly cast for clarity
+          const firestoreUser = userDocSnap.data() as UserProfileData;
           setUser({
             uid: firebaseUser.uid,
-            name: firestoreUser.name || firebaseUser.displayName, // Prioritize Firestore name
+            name: firestoreUser.name || firebaseUser.displayName,
             email: firebaseUser.email,
-            avatarUrl: firestoreUser.avatarUrl || firebaseUser.photoURL, // Prioritize Firestore avatarUrl
-            currentLocation: firestoreUser.currentLocation, 
+            avatarUrl: firestoreUser.avatarUrl || firebaseUser.photoURL,
+            currentLocation: firestoreUser.currentLocation,
+            // Add displayName and photoURL from FirebaseUser as fallbacks if needed by other parts of User type
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
           });
         } else {
-           const newUserProfile: User = {
+           const newUserProfileData = { // Use a more descriptive name
             uid: firebaseUser.uid,
             name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User',
             email: firebaseUser.email,
-            avatarUrl: firebaseUser.photoURL || `https://picsum.photos/seed/${firebaseUser.uid}/100/100`,
+            avatarUrl: firebaseUser.photoURL || `https://placehold.co/100x100.png?text=${(firebaseUser.displayName || 'NU').substring(0,2).toUpperCase()}`,
+            // Explicitly include displayName and photoURL if they are part of the User type used in setUser
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
           };
           await setDoc(doc(db, "users", firebaseUser.uid), {
-            name: newUserProfile.name,
-            email: newUserProfile.email,
-            avatarUrl: newUserProfile.avatarUrl,
+            uid: newUserProfileData.uid, // ensure uid is written
+            name: newUserProfileData.name,
+            email: newUserProfileData.email,
+            avatarUrl: newUserProfileData.avatarUrl, // Firestore specific avatar
             createdAt: new Date(),
+            // ensure UserProfile specific fields like friends, currentLocation are initialized
+            friends: [],
+            currentLocation: null,
           });
-          setUser(newUserProfile);
+          setUser(newUserProfileData as User); // Cast to User, ensure User type matches
         }
       } else {
         setUser(null);
@@ -75,25 +89,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Use a placeholder or a default avatar URL logic for new sign-ups
       const defaultAvatar = `https://placehold.co/100x100.png?text=${name.substring(0,2).toUpperCase()}`;
       await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
       
       const userDocRef = doc(db, "users", userCredential.user.uid);
-      await setDoc(userDocRef, {
+      const newUserProfileData = {
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: defaultAvatar, // Store this default avatar in Firestore as well
+        avatarUrl: defaultAvatar, 
         createdAt: new Date(),
-      });
+        friends: [],
+        currentLocation: null,
+        // Include FirebaseUser's displayName and photoURL if your User type expects them
+        displayName: name,
+        photoURL: defaultAvatar,
+      };
+      await setDoc(userDocRef, newUserProfileData);
       
-       setUser({ // Update local context state immediately
-        uid: userCredential.user.uid,
-        name: name,
-        email: email,
-        avatarUrl: defaultAvatar,
-      });
+       setUser(newUserProfileData as User);
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
@@ -128,8 +142,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    if (!auth.currentUser) {
+      throw new Error("No user is currently signed in.");
+    }
+    if (!auth.currentUser.email) {
+        throw new Error("User email is not available for re-authentication.");
+    }
+
+    const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+    
+    try {
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await firebaseUpdatePassword(auth.currentUser, newPassword);
+    } catch (error) {
+      console.error("Error changing password:", error);
+      throw error; // Re-throw to be caught by the calling form
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, setUser, isLoading, signUp, signIn, logout }}>
+    <AuthContext.Provider value={{ user, setUser, isLoading, signUp, signIn, logout, changePassword }}>
       {children}
     </AuthContext.Provider>
   );

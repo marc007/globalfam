@@ -5,16 +5,16 @@ import { useEffect, useState, ChangeEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { LocationForm } from '@/components/forms/LocationForm';
+import { ChangePasswordForm } from '@/components/forms/ChangePasswordForm'; // Import new form
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera, AlertTriangle } from 'lucide-react';
+import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera, AlertTriangle, KeyRound } from 'lucide-react';
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { uploadAvatar } from '@/lib/firebase/storage';
-// Changed from updateUserAvatarUrl to updateUserPhotoURL
-import { updateUserPhotoURL } from '@/lib/firebase/users'; 
+import { updateUserPhotoURL as updateUserFirestorePhotoURL } from '@/lib/firebase/users'; 
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -50,11 +50,12 @@ export default function ProfilePage() {
     if (!user || !user.uid) return;
     setIsUpdatingLocation(true);
     try {
-      // Assuming updateUserProfile from users.ts is the source of truth for profile data
-      // await updateUserProfile(user.uid, { currentLocation: data }); 
-      // For now, using the local client version if it's specifically for this page's logic
       await updateUserLocationClient(user.uid, data);
-      setUser(prevUser => prevUser ? ({ ...prevUser, currentLocation: data }) : null);
+      // Update user context with new location
+      setUser(prevUser => {
+        if (!prevUser) return null;
+        return { ...prevUser, currentLocation: data };
+      });
       toast({
         title: "Location Updated!",
         description: `Your location is now set to ${data.city}, ${data.country}.`,
@@ -80,12 +81,13 @@ export default function ProfilePage() {
     setIsUploadingAvatar(true);
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
-      // Changed from updateUserAvatarUrl to updateUserPhotoURL
-      await updateUserPhotoURL(user.uid, downloadURL); 
-      // Update local user state in AuthContext to reflect new avatar immediately
-      // Ensure your AuthContext's user object includes photoURL or a similar field.
-      // Assuming 'avatarUrl' in AuthContext's user state corresponds to 'photoURL' in Firestore profile
-      setUser(prevUser => prevUser ? ({ ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL }) : null);
+      await updateUserFirestorePhotoURL(user.uid, downloadURL); 
+      
+      setUser(prevUser => {
+        if (!prevUser) return null;
+        // Ensure both avatarUrl (used by some local components) and photoURL (Firebase standard) are updated
+        return { ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL };
+      });
 
       toast({
         title: "Avatar Updated!",
@@ -104,7 +106,7 @@ export default function ProfilePage() {
   };
 
   const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'GF'; // GlobalFam initials
+    if (!name) return 'GF';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
@@ -118,12 +120,11 @@ export default function ProfilePage() {
   }
 
   if (!user) {
-    return null; // Handled by useEffect redirect
+    return null; 
   }
   
-  // Use user.displayName and user.photoURL for consistency with UserProfile
-  const displayName = user.displayName || user.email; // Fallback to email if displayName isn't set
-  const photoURL = user.photoURL || user.avatarUrl; // Use photoURL if available from Auth, fallback to avatarUrl if that's what's in local state
+  const displayName = user.name || user.displayName || user.email; 
+  const photoURL = user.avatarUrl || user.photoURL; 
 
   const renderLocationForm = () => {
     if (!mapsApiKey) {
@@ -159,9 +160,10 @@ export default function ProfilePage() {
                 </div>
              ) : null}
             <AvatarImage
-              src={photoURL} // Use photoURL
+              src={photoURL} 
               alt={displayName ?? 'User'}
               className={isUploadingAvatar ? 'opacity-50' : ''}
+              data-ai-hint="profile avatar"
             />
             <AvatarFallback className="text-5xl bg-primary text-primary-foreground">{getInitials(displayName)}</AvatarFallback>
           </Avatar>
@@ -185,28 +187,37 @@ export default function ProfilePage() {
       </section>
 
       <div className="grid md:grid-cols-2 gap-8 items-start">
-        <section id="location">
+        <section id="location" className="space-y-8">
           {renderLocationForm()}
+          <ChangePasswordForm /> 
         </section>
 
         <section>
           <Card className="w-full shadow-lg bg-card/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="flex items-center text-2xl text-secondary">
-                <Edit3 className="mr-2 h-6 w-6" /> Account Settings
+                <Edit3 className="mr-2 h-6 w-6" /> Account Details
               </CardTitle>
-              <CardDescription>Manage your GlobalFam account details.</CardDescription>
+              <CardDescription>Manage your GlobalFam account information.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <div>
-                <h4 className="font-semibold text-accent">Current Location</h4>
+                <h4 className="font-semibold text-accent flex items-center">
+                    <UserCircle className="mr-2 h-5 w-5" /> Display Name
+                </h4>
+                <p className="text-foreground">{displayName || 'Not set'}</p>
+              </div>
+               <div>
+                <h4 className="font-semibold text-accent flex items-center">
+                    <MapPin className="mr-2 h-5 w-5" /> Current Location
+                </h4>
                 {user.currentLocation ? (
                   <p className="text-foreground">{user.currentLocation.city}, {user.currentLocation.country}</p>
                 ) : (
                   <p className="text-muted-foreground">No location set. Update it using the form!</p>
                 )}
               </div>
-               <Button variant="destructive" onClick={logout} className="w-full">
+               <Button variant="destructive" onClick={logout} className="w-full mt-4">
                 <LogOut className="mr-2 h-4 w-4" /> Log Out
               </Button>
             </CardContent>

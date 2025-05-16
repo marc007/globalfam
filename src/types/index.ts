@@ -1,24 +1,28 @@
 
 import type { Timestamp } from 'firebase/firestore';
 
+// User type for AuthContext and general app use
 export interface User {
   uid: string;
-  name: string | null;
-  email: string | null;
-  avatarUrl?: string;
-  currentLocation?: UserLocation;
-  // If you add a createdAt field to User for example:
-  // createdAt?: Date | Timestamp; 
+  name: string | null; // Primarily from Firestore profile
+  email: string | null; // From Firebase Auth
+  avatarUrl?: string; // Custom avatar URL from Firestore profile/Storage
+  currentLocation?: UserLocation | null; // From Firestore profile
+  // Optional fields from FirebaseUser, if needed directly in User type
+  displayName?: string | null; // Fallback from Firebase Auth
+  photoURL?: string | null; // Fallback from Firebase Auth
 }
 
-// This can be used when fetching user profile directly from 'users' collection.
+// Specifically for data structure in 'users' Firestore collection
 export interface UserProfileData {
   uid: string;
   name: string | null;
-  email: string | null;
-  avatarUrl?: string;
-  currentLocation?: UserLocation;
-  // createdAt?: Date; // After conversion
+  email: string | null; // Storing email in profile can be useful for some queries
+  avatarUrl?: string;   // URL from Firebase Storage, managed by your app
+  currentLocation?: UserLocation | null;
+  createdAt?: Timestamp; // Firestore Timestamp for creation date
+  friends?: string[]; // Array of friend UIDs
+  // any other profile-specific fields
 }
 
 export interface UserLocation {
@@ -32,7 +36,7 @@ export interface Friend {
   id: string; // Friend's UID
   name: string;
   avatarUrl?: string;
-  location: UserLocation; // This will be User.currentLocation
+  location: UserLocation; 
   latestStatus?: StatusUpdate;
 }
 
@@ -43,13 +47,25 @@ export interface StatusUpdate {
   createdAt: Date; // Always Date object in application code after conversion from Timestamp
 }
 
+// Invite as stored in Firestore (uses Timestamp)
+export interface InviteDocumentData {
+    code: string;
+    creatorUid: string;
+    createdAt: Timestamp;
+    expiresAt: Timestamp;
+    status: 'pending' | 'used' | 'expired';
+    usedByUid?: string;
+    usedAt?: Timestamp;
+}
+
+// Invite as used in the application (uses Date)
 export interface Invite {
   id: string; // Firestore document ID
   code: string;
-  createdAt: Date | Timestamp; // Allow Timestamp for Firestore, convert to Date in app
-  expiresAt: Date | Timestamp; // Allow Timestamp for Firestore, convert to Date in app
-  createdBy: string; // User's UID
+  creatorUid: string;
+  createdAt: Date; 
+  expiresAt: Date; 
   status: 'pending' | 'used' | 'expired';
-  usedBy?: string; // User's UID who used the invite
-  usedAt?: Date | Timestamp; // Allow Timestamp for Firestore, convert to Date in app
+  usedByUid?: string; 
+  usedAt?: Date; 
 }

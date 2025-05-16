@@ -6,23 +6,23 @@ export interface User {
   uid: string;
   name: string | null; // Primarily from Firestore profile
   email: string | null; // From Firebase Auth
-  avatarUrl?: string; // Custom avatar URL from Firestore profile/Storage
+  avatarUrl?: string | null; // The URL to be used for display (determined by AuthContext logic)
   currentLocation?: UserLocation | null; // From Firestore profile
-  // Optional fields from FirebaseUser, if needed directly in User type
-  displayName?: string | null; // Fallback from Firebase Auth
-  photoURL?: string | null; // Fallback from Firebase Auth
+  displayName?: string | null; // Fallback from Firebase Auth, or same as name
+  photoURL?: string | null; // Canonical photoURL from Firebase Auth
 }
 
 // Specifically for data structure in 'users' Firestore collection
 export interface UserProfileData {
   uid: string;
   name: string | null;
-  email: string | null; // Storing email in profile can be useful for some queries
-  avatarUrl?: string;   // URL from Firebase Storage, managed by your app
+  email: string | null;
+  avatarUrl?: string | null;   // URL for custom uploaded avatar or initial default
+  photoURL?: string | null;    // Can store a copy of Firebase Auth photoURL
   currentLocation?: UserLocation | null;
-  createdAt?: Timestamp; // Firestore Timestamp for creation date
+  createdAt?: Date | Timestamp; // Firestore Timestamp for creation date, allow Date for easier use
   friends?: string[]; // Array of friend UIDs
-  // any other profile-specific fields
+  displayName?: string | null;
 }
 
 export interface UserLocation {

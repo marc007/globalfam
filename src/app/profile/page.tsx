@@ -15,10 +15,10 @@ import { Input } from '@/components/ui/input'; // Import Input
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { uploadAvatar } from '@/lib/firebase/storage';
-import { updateUserPhotoURL as updateUserFirestorePhotoURL } from '@/lib/firebase/users'; 
+import { updateUserAvatarUrlInFirestore } from '@/lib/firebase/users'; // UPDATED IMPORT
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { updateProfile, getAuth } from 'firebase/auth'; 
+import { updateProfile, getAuth } from 'firebase/auth';
 
 
 async function updateUserLocationClient(userId: string, location: UserLocation): Promise<void> {
@@ -99,12 +99,16 @@ export default function ProfilePage() {
     setIsUploadingAvatar(true);
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
-      
+
+      // Update Firebase Auth profile's photoURL
       await updateProfile(firebaseCurrentUser, { photoURL: downloadURL });
-      await updateUserFirestorePhotoURL(user.uid, downloadURL); 
-      
+      // Update our custom 'avatarUrl' field in Firestore user document
+      await updateUserAvatarUrlInFirestore(user.uid, downloadURL);
+
+      // Update local AuthContext state for immediate UI reflection
       setUser(prevUser => {
         if (!prevUser) return null;
+        // avatarUrl is used for display, photoURL stores the canonical Auth URL
         return { ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL };
       });
 
@@ -164,11 +168,12 @@ export default function ProfilePage() {
   }
 
   if (!user) {
-    return null; 
+    return null;
   }
-  
-  const currentDisplayName = user.name || user.displayName || user.email; 
-  const photoURL = user.avatarUrl || user.photoURL; 
+
+  const currentDisplayName = user.name || user.displayName || user.email;
+  // user.avatarUrl is the one decided by AuthContext logic for display
+  const displayPhotoURL = user.avatarUrl;
 
   const renderLocationForm = () => {
     if (!mapsApiKey) {
@@ -197,14 +202,14 @@ export default function ProfilePage() {
     <div className="space-y-12">
       <section className="flex flex-col items-center text-center">
         <label htmlFor="avatar-upload" className="cursor-pointer relative group mb-6">
-          <Avatar key={photoURL || user.uid} className="h-32 w-32 border-4 border-primary shadow-lg relative">
+          <Avatar key={displayPhotoURL || user.uid} className="h-32 w-32 border-4 border-primary shadow-lg relative">
              {isUploadingAvatar ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10 rounded-full">
                     <Loader2 className="h-10 w-10 animate-spin text-primary" />
                 </div>
              ) : null}
             <AvatarImage
-              src={photoURL} 
+              src={displayPhotoURL}
               alt={currentDisplayName ?? 'User'}
               className={isUploadingAvatar ? 'opacity-50' : ''}
               data-ai-hint="profile avatar"
@@ -260,7 +265,7 @@ export default function ProfilePage() {
       <div className="grid md:grid-cols-2 gap-8 items-start">
         <section id="location" className="space-y-8">
           {renderLocationForm()}
-          <ChangePasswordForm /> 
+          <ChangePasswordForm />
         </section>
 
         <section>
@@ -298,5 +303,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-    

@@ -15,7 +15,8 @@ export interface UserProfile {
   uid: string;
   email?: string | null;
   displayName?: string | null;
-  photoURL?: string | null;
+  photoURL?: string | null; // This field in Firestore can store a copy of Auth photoURL or be a fallback
+  avatarUrl?: string | null; // This field in Firestore stores the custom uploaded or initial default avatar
   createdAt?: Timestamp;
   friends?: string[]; // Array of friend UIDs
   currentLocation?: UserLocation | null; // Added currentLocation
@@ -23,22 +24,20 @@ export interface UserProfile {
 }
 
 // Function to create or update a user profile (e.g., on signup/login)
-// IMPORTANT: Ensure that when users update their location, they write to the 'currentLocation' field in their UserProfile document.
 export const updateUserProfile = async (uid: string, data: Partial<UserProfile>): Promise<void> => {
   const userRef = doc(db, 'users', uid);
   try {
     const userSnap = await getDoc(userRef);
     if (!userSnap.exists()) {
-      await setDoc(userRef, { 
-        ...data, 
-        uid, 
+      await setDoc(userRef, {
+        ...data,
+        uid,
         createdAt: Timestamp.now(),
         friends: [], // Initialize friends array if new user
         currentLocation: data.currentLocation !== undefined ? data.currentLocation : null, // Initialize currentLocation
       }, { merge: true });
       console.log(`User profile created for ${uid}`);
     } else {
-      // When updating, ensure currentLocation is explicitly handled if it can be set to null
       const updateData = { ...data };
       if (data.currentLocation === null) {
         updateData.currentLocation = null;
@@ -52,15 +51,14 @@ export const updateUserProfile = async (uid: string, data: Partial<UserProfile>)
   }
 };
 
-// Specific function to update only the photoURL (avatar)
-export const updateUserPhotoURL = async (uid: string, photoURL: string | null): Promise<void> => {
+// Specific function to update only the custom avatarUrl in Firestore
+export const updateUserAvatarUrlInFirestore = async (uid: string, avatarUrl: string | null): Promise<void> => {
   try {
-    await updateUserProfile(uid, { photoURL });
-    console.log(`User photoURL updated for ${uid}`);
+    await updateUserProfile(uid, { avatarUrl }); // Updates 'avatarUrl' field in Firestore
+    console.log(`User avatarUrl updated in Firestore for ${uid}`);
   } catch (error) {
-    console.error('Error updating user photoURL:', error);
-    // Re-throw or handle more specifically if needed
-    throw new Error('Failed to update user photoURL.');
+    console.error('Error updating user avatarUrl in Firestore:', error);
+    throw new Error('Failed to update user avatarUrl in Firestore.');
   }
 };
 
@@ -83,13 +81,12 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
 
 // Function to listen to real-time updates on a user profile
 export const listenToUserProfile = (
-  uid: string, 
+  uid: string,
   callback: (profile: UserProfile | null) => void
 ): Unsubscribe => {
   const userRef = doc(db, 'users', uid);
   const unsubscribe = onSnapshot(userRef, (docSnap) => {
     if (docSnap.exists()) {
-      // Cast to UserProfile which now includes currentLocation
       callback(docSnap.data() as UserProfile);
     } else {
       console.log('No such user profile for UID during listener setup:', uid);
@@ -107,7 +104,7 @@ export const listenToUserProfile = (
 export const addFriendConnection = async (userId1: string, userId2: string): Promise<void> => {
   if (userId1 === userId2) {
     console.warn("User cannot add themselves as a friend.");
-    return; 
+    return;
   }
   try {
     const user1Profile = await getUserProfile(userId1);

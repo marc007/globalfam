@@ -1,24 +1,24 @@
 
 "use client";
 
-import type { User, UserProfileData } from '@/types'; 
+import type { User, UserProfileData } from '@/types';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  onAuthStateChanged, 
+import {
+  onAuthStateChanged,
   signOut as firebaseSignOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
-  EmailAuthProvider, 
-  reauthenticateWithCredential, 
-  updatePassword as firebaseUpdatePassword, 
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword as firebaseUpdatePassword,
   type User as FirebaseUser
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore'; // Added updateDoc
-import { useRouter } from 'next/navigation'; 
-import { updateUserProfile as updateUserProfileInFirestore } from '@/lib/firebase/users'; // For clarity
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { useRouter } from 'next/navigation';
+import { updateUserProfile as updateUserProfileInFirestore } from '@/lib/firebase/users';
 
 interface AuthContextType {
   user: User | null;
@@ -28,7 +28,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<FirebaseUser | null>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  updateUserDisplayName: (newName: string) => Promise<void>; // New method
+  updateUserDisplayName: (newName: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,45 +36,58 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter(); 
+  const router = useRouter();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
+        const defaultFallbackAvatar = `https://placehold.co/100x100.png?text=${(firebaseUser.displayName || firebaseUser.email?.charAt(0) || 'GF').substring(0,2).toUpperCase()}`;
 
         if (userDocSnap.exists()) {
           const firestoreUser = userDocSnap.data() as UserProfileData;
-          // Prioritize Firestore avatarUrl (updated by app), then Firebase Auth photoURL
-          const finalAvatarUrl = firestoreUser.avatarUrl || firebaseUser.photoURL;
-          const finalDisplayName = firestoreUser.name || firebaseUser.displayName; // Prioritize Firestore name
+          // Prioritize Firebase Auth photoURL (from provider or custom upload), then Firestore custom avatarUrl, then Firestore photoURL (legacy/backup), then default.
+          const finalAvatarUrl = firebaseUser.photoURL || firestoreUser.avatarUrl || firestoreUser.photoURL || defaultFallbackAvatar;
+          const finalDisplayName = firestoreUser.name || firebaseUser.displayName;
 
           setUser({
             uid: firebaseUser.uid,
-            name: finalDisplayName, // Use determined finalDisplayName
+            name: finalDisplayName,
             email: firebaseUser.email,
-            avatarUrl: finalAvatarUrl, 
+            avatarUrl: finalAvatarUrl, // This is the URL used for display
             currentLocation: firestoreUser.currentLocation,
-            displayName: finalDisplayName, // Reflect in displayName too for consistency
-            photoURL: firebaseUser.photoURL, 
+            displayName: finalDisplayName,
+            photoURL: firebaseUser.photoURL, // Store the raw Auth photoURL for reference
           });
         } else {
-           const defaultAvatar = `https://placehold.co/100x100.png?text=${(firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'NU').substring(0,2).toUpperCase()}`;
+           // New user (e.g., first Google Sign-In, or just created account not yet in Firestore)
            const newUserName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User';
-           const newUserProfileData = { 
+           // Use Firebase Auth photoURL if available (e.g. from Google), otherwise our default placeholder
+           const initialAvatarForFirestore = firebaseUser.photoURL || defaultFallbackAvatar;
+
+           const newUserProfileData: UserProfileData = {
             uid: firebaseUser.uid,
             name: newUserName,
             email: firebaseUser.email,
-            avatarUrl: firebaseUser.photoURL || defaultAvatar,
-            photoURL: firebaseUser.photoURL, 
+            avatarUrl: initialAvatarForFirestore, // Store this as the initial custom/default avatar
+            photoURL: firebaseUser.photoURL,      // Store the Auth photoURL too
             currentLocation: null,
             displayName: newUserName,
             friends: [],
-            createdAt: new Date(),
+            createdAt: new Date(), // Use JS Date for Firestore, will be converted to Timestamp by Firestore SDK
           };
           await setDoc(doc(db, "users", firebaseUser.uid), newUserProfileData);
-          setUser(newUserProfileData as User); 
+
+          setUser({
+            uid: firebaseUser.uid,
+            name: newUserName,
+            email: firebaseUser.email,
+            avatarUrl: initialAvatarForFirestore, // Display URL
+            currentLocation: null,
+            displayName: newUserName,
+            photoURL: firebaseUser.photoURL, // Raw Auth URL
+          });
         }
       } else {
         setUser(null);
@@ -90,29 +103,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const defaultAvatar = `https://placehold.co/100x100.png?text=${name.substring(0,2).toUpperCase()}`;
+      // Set photoURL in Firebase Auth profile
       await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
-      
+
       const userDocRef = doc(db, "users", userCredential.user.uid);
-      const newUserProfileData = {
+      // Firebase Auth user object after updateProfile
+      const updatedFirebaseUser = auth.currentUser!;
+
+      const newUserProfileData: UserProfileData = {
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: defaultAvatar, 
-        photoURL: defaultAvatar, 
+        avatarUrl: updatedFirebaseUser.photoURL, // Use the photoURL from Auth (which is defaultAvatar)
+        photoURL: updatedFirebaseUser.photoURL,  // Also store it as photoURL in Firestore
         createdAt: new Date(),
         friends: [],
         currentLocation: null,
-        displayName: name, 
+        displayName: name,
       };
       await setDoc(userDocRef, newUserProfileData);
-      
-      setUser(newUserProfileData as User); // Reflects User type with name and displayName
+
+      setUser({
+        uid: userCredential.user.uid,
+        name: name,
+        email: email,
+        avatarUrl: updatedFirebaseUser.photoURL, // Display URL
+        currentLocation: null,
+        displayName: name,
+        photoURL: updatedFirebaseUser.photoURL, // Raw Auth URL
+      });
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
       console.error("Error signing up:", error);
       setIsLoading(false);
-      throw error; 
+      throw error;
     }
   };
 
@@ -120,12 +145,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting the user state
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
       console.error("Error signing in:", error);
       setIsLoading(false);
-      throw error; 
+      throw error;
     }
   };
 
@@ -133,14 +159,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       await firebaseSignOut(auth);
-      router.push('/'); 
+      router.push('/');
     } catch (error) {
       console.error("Error signing out: ", error);
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
     if (!auth.currentUser) {
       throw new Error("No user is currently signed in.");
@@ -150,7 +176,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
-    
+
     try {
       await reauthenticateWithCredential(auth.currentUser, credential);
       await firebaseUpdatePassword(auth.currentUser, newPassword);
@@ -165,15 +191,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       throw new Error("No user is currently signed in.");
     }
     try {
-      // Update Firebase Auth profile
       await updateProfile(auth.currentUser, { displayName: newName });
-
-      // Update Firestore document
-      // The `updateUserProfileInFirestore` function in `users.ts` handles merging.
-      // We pass `name` for our primary app display and `displayName` for consistency.
       await updateUserProfileInFirestore(auth.currentUser.uid, { name: newName, displayName: newName });
 
-      // Update local AuthContext state
       setUser(prevUser => {
         if (!prevUser) return null;
         return { ...prevUser, name: newName, displayName: newName };
@@ -198,5 +218,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-    

@@ -34,7 +34,7 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
     const randomChoice = cardColors[Math.floor(Math.random() * cardColors.length)];
     setBorderColorClass(randomChoice.border);
     setTextColorClass(randomChoice.text);
-  }, []);
+  }, []); // Empty dependency array ensures this runs once on mount when client hydrates
 
 
   const locationDisplay = friend.location
@@ -58,7 +58,7 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
     >
       <CardHeader className="flex flex-row items-start gap-4 pb-3">
         <Avatar className="h-16 w-16 border-4 border-background shadow-md">
-          <AvatarImage src={friend.avatarUrl} alt={friend.name || 'Friend'} data-ai-hint="profile avatar" />
+          <AvatarImage src={(friend.photoURL && friend.photoURL.trim() !== "") ? friend.photoURL : (friend.avatarUrl && friend.avatarUrl.trim() !== "") ? friend.avatarUrl : undefined} alt={friend.name || 'Friend'} data-ai-hint="profile avatar" />
           <AvatarFallback className="text-xl bg-muted-foreground text-background font-bold">
             {getInitials(friend.name)}
           </AvatarFallback>
@@ -93,7 +93,10 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
         )}
       </CardContent>
       <CardFooter className="flex justify-end pt-2">
-        <Badge variant={statusBadgeVariant} className={friend.isOnline ? `border-current ${textColorClass || 'text-muted-foreground'}` : `border-muted-foreground/50 text-muted-foreground`}>
+        <Badge
+          variant={statusBadgeVariant}
+          className={friend.isOnline ? `bg-transparent hover:bg-transparent border-current ${textColorClass || 'text-muted-foreground'}` : `border-muted-foreground/50 text-muted-foreground`}
+        >
           {statusBadgeText}
         </Badge>
       </CardFooter>

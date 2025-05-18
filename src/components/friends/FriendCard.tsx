@@ -7,23 +7,23 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { MapPin, MessageSquare, CalendarDays } from "lucide-react";
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
-import { useEffect, useState } from 'react'; // Import useEffect and useState
+import { useEffect, useState } from 'react';
 
 interface FriendCardProps {
   friend: Friend;
+  onCardClick?: (friend: Friend) => void; // New prop
 }
 
-const getInitials = (name?: string | null) => { // Make name optional
+const getInitials = (name?: string | null) => {
   if (!name) return '??';
   return name.split(' ').map(n => n[0]).join('').toUpperCase();
 };
 
-export function FriendCard({ friend }: FriendCardProps) {
+export function FriendCard({ friend, onCardClick }: FriendCardProps) {
   const [borderColorClass, setBorderColorClass] = useState('');
   const [textColorClass, setTextColorClass] = useState('');
 
   useEffect(() => {
-    // This effect runs only on the client-side after hydration
     const cardColors = [
       { border: 'border-accent', text: 'text-accent' },
       { border: 'border-secondary', text: 'text-secondary' },
@@ -33,16 +33,24 @@ export function FriendCard({ friend }: FriendCardProps) {
     const randomChoice = cardColors[Math.floor(Math.random() * cardColors.length)];
     setBorderColorClass(randomChoice.border);
     setTextColorClass(randomChoice.text);
-  }, []); // Empty dependency array ensures this runs once on mount client-side
+  }, []);
 
 
-  // Handle potential undefined location
-  const locationDisplay = friend.location 
-    ? `${friend.location.city}, ${friend.location.country}` 
+  const locationDisplay = friend.location
+    ? `${friend.location.city}, ${friend.location.country}`
     : 'Location not set';
 
+  const handleCardClick = () => {
+    if (onCardClick) {
+      onCardClick(friend);
+    }
+  };
+
   return (
-    <Card className={`bg-card/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 rounded-xl border-2 ${borderColorClass || 'border-transparent'}`}>
+    <Card 
+      className={`bg-card/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 rounded-xl border-2 ${borderColorClass || 'border-transparent'} cursor-pointer`}
+      onClick={handleCardClick} // Added onClick handler
+    >
       <CardHeader className="flex flex-row items-center gap-4 pb-3">
         <Avatar className="h-16 w-16 border-4 border-background shadow-md">
           <AvatarImage src={friend.avatarUrl} alt={friend.name || 'Friend'} data-ai-hint="profile avatar" />

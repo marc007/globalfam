@@ -36,7 +36,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Clean up old listeners before setting new ones
     activeListeners.forEach(unsub => unsub());
     const newListeners: (() => void)[] = [];
 
@@ -47,10 +46,6 @@ export default function DashboardPage() {
         setFriends(prevFriends => {
           const existingFriendsMap = new Map(prevFriends.map(f => [f.id, f]));
           const freshFriendsArray: Friend[] = [];
-          const uidsToProcess = new Set(friendUids);
-          const currentFriendIds = new Set(prevFriends.map(f => f.id));
-
-          // Add new or existing friends
           friendUids.forEach(uid => {
             if (existingFriendsMap.has(uid)) {
               freshFriendsArray.push(existingFriendsMap.get(uid)!);
@@ -64,13 +59,8 @@ export default function DashboardPage() {
               });
             }
           });
-          
-          // Filter out removed friends
-          return freshFriendsArray.filter(f => uidsToProcess.has(f.id));
+          return freshFriendsArray.filter(f => friendUids.includes(f.id));
         });
-
-        // Clean up listeners for friends who are no longer in the list
-        // This logic is implicitly handled by rebuilding listeners based on the new friendUids
         
         const perFriendListeners: (() => void)[] = [];
         friendUids.forEach(friendUid => {
@@ -82,14 +72,13 @@ export default function DashboardPage() {
                     ? {
                         ...f,
                         name: friendProfile.displayName || 'Unknown Name',
-                        avatarUrl: friendProfile.photoURL || undefined,
+                        avatarUrl: friendProfile.avatarUrl || friendProfile.photoURL || undefined,
                         location: friendProfile.currentLocation || { city: 'Location not set', country: '' },
                       }
                     : f
                 )
               );
             } else {
-              // If a friend's profile becomes null (e.g., deleted), remove them
               setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
             }
           });
@@ -103,12 +92,11 @@ export default function DashboardPage() {
                   : f
               )
             );
-            // If the latest status has a location, target the map view to it
             if (latestStatus?.location && typeof latestStatus.location.latitude === 'number' && typeof latestStatus.location.longitude === 'number') {
               setMapTargetView({
                 center: { lat: latestStatus.location.latitude, lng: latestStatus.location.longitude },
-                zoom: 12, // Or a preferred zoom level for viewing friend's status
-                key: Date.now() // Unique key to trigger map update
+                zoom: 12, 
+                key: Date.now() 
               });
             }
           });
@@ -116,13 +104,13 @@ export default function DashboardPage() {
         });
         newListeners.push(...perFriendListeners);
 
-      } else if (!currentUserProfile) { // User profile doesn't exist or friends array is not there
+      } else if (!currentUserProfile) {
         setFriends([]);
       }
     });
     newListeners.push(userProfileUnsub);
 
-    setActiveListeners(newListeners); // Set the new batch of listeners
+    setActiveListeners(newListeners);
 
     return () => {
       newListeners.forEach(unsub => unsub());
@@ -131,7 +119,6 @@ export default function DashboardPage() {
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-  // This handler focuses the map on the current user's location after they post a status.
   const handleCurrentUserStatusSuccess = () => {
     if (user?.currentLocation && typeof user.currentLocation.latitude === 'number' && typeof user.currentLocation.longitude === 'number') {
       setMapTargetView({
@@ -139,6 +126,20 @@ export default function DashboardPage() {
         zoom: 12, 
         key: Date.now() 
       });
+    }
+  };
+
+  const handleFriendCardClick = (clickedFriend: Friend) => {
+    if (clickedFriend.location && typeof clickedFriend.location.latitude === 'number' && typeof clickedFriend.location.longitude === 'number') {
+      setMapTargetView({
+        center: { lat: clickedFriend.location.latitude, lng: clickedFriend.location.longitude },
+        zoom: 12, // Or a preferred zoom level
+        key: Date.now() // Unique key to trigger map update
+      });
+    } else if (clickedFriend.location && clickedFriend.location.city) {
+      // If no lat/lng, could potentially trigger geocoding here, but for simplicity we'll rely on MapDisplay's internal geocoding for pins
+      // Or you could show a toast "Location details incomplete for direct map focus"
+      console.log("Friend location has city/country but no explicit lat/lng for direct focus via card click.");
     }
   };
 
@@ -187,7 +188,7 @@ export default function DashboardPage() {
             <Users className="h-8 w-8 text-secondary" />
             <h2 className="text-3xl font-semibold">Your Fam</h2>
           </div>
-          <FriendList friends={friends} />
+          <FriendList friends={friends} onFriendCardClick={handleFriendCardClick} />
         </section>
 
         <section className="md:col-span-1 space-y-6 md:sticky md:top-24">

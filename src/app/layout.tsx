@@ -1,15 +1,14 @@
 
 import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
-// import { GeistMono } from 'geist/font/mono'; // Removed as per previous fix
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { AuthProvider } from '@/contexts/AuthContext';
 
 export const metadata: Metadata = {
-  title: 'GlobalFam - Connect with Friends',
-  description: 'Keep track of your friends around the world with GlobalFam.',
+  title: 'GlobalVibe - Connect with Your Vibe',
+  description: 'Share your world, see theirs. Stay connected with GlobalVibe.',
 };
 
 export default function RootLayout({
@@ -19,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${GeistSans.variable} font-sans antialiased`}> {/* GeistMono.variable was removed */}
+      <body className={`${GeistSans.variable} font-sans antialiased`}>
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col bg-background p-2.5">
             <AppHeader />
@@ -31,4 +30,3 @@ export default function RootLayout({
     </html>
   );
 }
-

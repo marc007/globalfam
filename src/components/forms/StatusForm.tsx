@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTransition } from "react";
 import { addStatusUpdate } from "@/lib/firebase/statusUpdates"; 
 import { useAuth } from '@/contexts/AuthContext'; 
+import type { UserLocation } from "@/types";
 
 const statusFormSchema = z.object({
   content: z.string().min(1, { message: "Status can't be empty." }).max(280, { message: "Status must be 280 characters or less." }),
@@ -58,7 +59,7 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
         await addStatusUpdate({ 
           userId: user.uid, 
           content: data.content,
-          location: user.currentLocation // Pass the user's current location
+          location: user.currentLocation as UserLocation | undefined // Pass the user's current location
         });
 
         toast({
@@ -85,7 +86,7 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
         <CardTitle className="flex items-center text-2xl text-secondary">
           <MessageSquare className="mr-2 h-6 w-6" /> What's Your Vibe?
         </CardTitle>
-        <CardDescription>Share a quick update with your GlobalFam!</CardDescription>
+        <CardDescription>Share a quick update with your GlobalVibe!</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>

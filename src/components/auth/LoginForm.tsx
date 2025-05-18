@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useTransition } from 'react';
@@ -62,17 +63,13 @@ export function LoginForm() {
 
   const toggleMode = () => {
     setIsLoginMode(!isLoginMode);
-    // Clear form fields when switching modes for better UX, optional
-    // setName(''); 
-    // setEmail('');
-    // setPassword('');
   };
 
   return (
     <Card className="w-full max-w-md shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader className="text-center">
         <CardTitle className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
-          {isLoginMode ? "Welcome Back!" : "Join GlobalFam!"}
+          {isLoginMode ? "Welcome Back!" : "Join GlobalVibe!"}
         </CardTitle>
         <CardDescription className="text-muted-foreground pt-2">
           {isLoginMode ? "Log in to connect with your friends." : "Create an account to get started."}

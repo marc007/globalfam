@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from 'react';
@@ -20,13 +21,12 @@ export default function HomePage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
-        <p className="mt-4 text-xl text-muted-foreground">Loading GlobalFam...</p>
+        <p className="mt-4 text-xl text-muted-foreground">Loading GlobalVibe...</p>
       </div>
     );
   }
 
   if (user) {
-    // This content will be briefly visible during redirect, or if redirect fails.
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)]">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
@@ -60,11 +60,11 @@ export default function HomePage() {
       <div className="text-center mb-12">
         <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter mb-4">
           <span className="text-transparent bg-clip-text bg-gradient-to-br from-accent via-primary to-secondary">
-            GlobalFam
+            GlobalVibe
           </span>
         </h1>
         <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
-          Your friends, one map away. Share your world, see theirs. Stay connected, no matter the distance.
+          Your friends, one map away. Share your vibe, see theirs. Stay connected, no matter the distance.
         </p>
       </div>
 
@@ -80,9 +80,9 @@ export default function HomePage() {
           <p className="text-sm text-muted-foreground text-center">Share your location and status updates effortlessly.</p>
         </div>
         <div className="flex flex-col items-center p-6 bg-card/50 backdrop-blur-sm rounded-xl shadow-lg border border-border/50">
-          <MessageSquare className="h-12 w-12 text-green-400 mb-4"/> {/* Neon Green example */}
+          <MessageSquare className="h-12 w-12 text-green-400 mb-4"/>
           <h3 className="text-xl font-semibold mb-2 text-primary">Vibe Together</h3>
-          <p className="text-sm text-muted-foreground text-center">Invite friends and build your global family.</p>
+          <p className="text-sm text-muted-foreground text-center">Invite friends and build your global vibe.</p>
         </div>
       </div>
       

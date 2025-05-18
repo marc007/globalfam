@@ -44,22 +44,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const userDocRef = doc(db, "users", firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         
-        // Generate default fallback text based on available info
-        const fallbackName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'GF';
+        const fallbackName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'GV'; // Changed
         const initials = fallbackName.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
-        const defaultFallbackAvatar = `https://placehold.co/100x100.png?text=${initials}`;
+        const defaultFallbackAvatar = `https://placehold.co/100x100.png?text=${initials || 'GV'}`; // Changed
 
         if (userDocSnap.exists()) {
           const firestoreUser = userDocSnap.data() as UserProfileData;
           let finalAvatarUrl;
 
-          // Explicitly prioritize firebaseUser.photoURL if it's a non-empty string
           if (firebaseUser.photoURL && firebaseUser.photoURL.trim() !== "") {
             finalAvatarUrl = firebaseUser.photoURL;
           } else if (firestoreUser.avatarUrl && firestoreUser.avatarUrl.trim() !== "") {
             finalAvatarUrl = firestoreUser.avatarUrl;
           } else if (firestoreUser.photoURL && firestoreUser.photoURL.trim() !== "") {
-            // This is a deeper fallback to another field in Firestore
             finalAvatarUrl = firestoreUser.photoURL;
           } else {
             finalAvatarUrl = defaultFallbackAvatar;
@@ -69,24 +66,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           setUser({
             uid: firebaseUser.uid,
-            name: finalDisplayName, // Use Firestore 'name' if available, else Auth 'displayName'
+            name: finalDisplayName,
             email: firebaseUser.email,
-            avatarUrl: finalAvatarUrl, // This is the URL used for display
+            avatarUrl: finalAvatarUrl, 
             currentLocation: firestoreUser.currentLocation,
-            displayName: finalDisplayName, // Store final determined display name
-            photoURL: firebaseUser.photoURL, // Store the raw Auth photoURL for reference (could be null/empty)
+            displayName: finalDisplayName, 
+            photoURL: firebaseUser.photoURL, 
           });
         } else {
            const newUserName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User';
-           // Use Firebase Auth photoURL if available (e.g. from Google), otherwise our default placeholder
            const initialAvatarForDisplay = (firebaseUser.photoURL && firebaseUser.photoURL.trim() !== "") ? firebaseUser.photoURL : defaultFallbackAvatar;
 
            const newUserProfileData: UserProfileData = {
             uid: firebaseUser.uid,
             name: newUserName,
             email: firebaseUser.email,
-            avatarUrl: initialAvatarForDisplay, // Store this as the initial custom/default avatar
-            photoURL: firebaseUser.photoURL,      // Store the Auth photoURL too (could be null/empty)
+            avatarUrl: initialAvatarForDisplay, 
+            photoURL: firebaseUser.photoURL,      
             currentLocation: null,
             displayName: newUserName,
             friends: [],
@@ -98,10 +94,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             uid: firebaseUser.uid,
             name: newUserName,
             email: firebaseUser.email,
-            avatarUrl: initialAvatarForDisplay, // Display URL
+            avatarUrl: initialAvatarForDisplay, 
             currentLocation: null,
             displayName: newUserName,
-            photoURL: firebaseUser.photoURL, // Raw Auth URL
+            photoURL: firebaseUser.photoURL, 
           });
         }
       } else {
@@ -118,19 +114,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const initials = name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
-      const defaultAvatar = `https://placehold.co/100x100.png?text=${initials || 'GF'}`;
+      const defaultAvatar = `https://placehold.co/100x100.png?text=${initials || 'GV'}`; // Changed
       
       await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
       
-      const updatedFirebaseUser = auth.currentUser!; // Firebase user after updateProfile
+      const updatedFirebaseUser = auth.currentUser!;
 
       const userDocRef = doc(db, "users", userCredential.user.uid);
       const newUserProfileData: UserProfileData = {
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: updatedFirebaseUser.photoURL, // Use the photoURL from Auth (which is defaultAvatar)
-        photoURL: updatedFirebaseUser.photoURL,  // Also store it as photoURL in Firestore
+        avatarUrl: updatedFirebaseUser.photoURL, 
+        photoURL: updatedFirebaseUser.photoURL,  
         createdAt: new Date(),
         friends: [],
         currentLocation: null,
@@ -138,14 +134,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       await setDoc(userDocRef, newUserProfileData);
 
-      setUser({ // Set context user state
+      setUser({ 
         uid: userCredential.user.uid,
         name: name,
         email: email,
-        avatarUrl: updatedFirebaseUser.photoURL, // Display URL is the Auth photoURL
+        avatarUrl: updatedFirebaseUser.photoURL, 
         currentLocation: null,
         displayName: name,
-        photoURL: updatedFirebaseUser.photoURL, // Raw Auth URL
+        photoURL: updatedFirebaseUser.photoURL, 
       });
       setIsLoading(false);
       return userCredential.user;
@@ -160,7 +156,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting the user state based on Auth and Firestore
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
@@ -207,7 +202,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     try {
       await updateProfile(auth.currentUser, { displayName: newName });
-      // Update Firestore 'name' and 'displayName' fields
       await updateUserProfileInFirestore(auth.currentUser.uid, { name: newName, displayName: newName });
 
       setUser(prevUser => {

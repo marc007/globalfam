@@ -11,11 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, UserCircle, MapPin, Edit3, LogOut, Camera, AlertTriangle, KeyRound, Save, X, Edit } from 'lucide-react';
 import type { UserLocation } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Import Input
+import { Input } from '@/components/ui/input'; 
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { uploadAvatar } from '@/lib/firebase/storage';
-import { updateUserAvatarUrlInFirestore } from '@/lib/firebase/users'; // UPDATED IMPORT
+import { updateUserAvatarUrlInFirestore } from '@/lib/firebase/users'; 
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { updateProfile, getAuth } from 'firebase/auth';
@@ -100,15 +100,11 @@ export default function ProfilePage() {
     try {
       const downloadURL = await uploadAvatar(user.uid, file);
 
-      // Update Firebase Auth profile's photoURL
       await updateProfile(firebaseCurrentUser, { photoURL: downloadURL });
-      // Update our custom 'avatarUrl' field in Firestore user document
       await updateUserAvatarUrlInFirestore(user.uid, downloadURL);
 
-      // Update local AuthContext state for immediate UI reflection
       setUser(prevUser => {
         if (!prevUser) return null;
-        // avatarUrl is used for display, photoURL stores the canonical Auth URL
         return { ...prevUser, avatarUrl: downloadURL, photoURL: downloadURL };
       });
 
@@ -154,7 +150,7 @@ export default function ProfilePage() {
   };
 
   const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'GF';
+    if (!name) return 'GV'; // Changed from GF to GV
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
@@ -172,7 +168,6 @@ export default function ProfilePage() {
   }
 
   const currentDisplayName = user.name || user.displayName || user.email;
-  // user.avatarUrl is the one decided by AuthContext logic for display
   const displayPhotoURL = user.avatarUrl;
 
   const renderLocationForm = () => {
@@ -274,7 +269,7 @@ export default function ProfilePage() {
               <CardTitle className="flex items-center text-2xl text-secondary">
                 <Edit3 className="mr-2 h-6 w-6" /> Account Details
               </CardTitle>
-              <CardDescription>Manage your GlobalFam account information.</CardDescription>
+              <CardDescription>Manage your GlobalVibe account information.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>

@@ -21,7 +21,7 @@ export function AppHeader() {
   const router = useRouter();
 
   const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'GF';
+    if (!name) return 'GV'; // Changed from GF to GV
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
@@ -29,9 +29,9 @@ export function AppHeader() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between">
         <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2 transition-transform hover:scale-105">
-          <Globe className="h-8 w-8 text-accent" />
-          <span className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-accent via-primary to-secondary">
-            GlobalFam
+          <Globe className="h-8 w-8 text-primary" /> {/* Using new primary color for icon */}
+          <span className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
+            GlobalVibe {/* Changed from GlobalFam */}
           </span>
         </Link>
         
@@ -40,7 +40,6 @@ export function AppHeader() {
             <div className="h-8 w-20 animate-pulse rounded-md bg-muted"></div>
           ) : user ? (
             <>
-              {/* Dashboard and Invite buttons removed from here */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">

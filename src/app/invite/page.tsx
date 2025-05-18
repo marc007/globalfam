@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -8,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Mail, Link as LinkIcon, Copy, CheckCircle, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-// Import the new Firebase invite function
 import { createInviteLinkDocument } from '@/lib/firebase/invites';
 
 export default function InvitePage() {
@@ -39,13 +39,12 @@ export default function InvitePage() {
     setIsGenerating(true);
     setCopied(false);
     try {
-      // Call the Firebase function to create the invite document
       const inviteCode = await createInviteLinkDocument(user.uid);
-      const fullLink = `${window.location.origin}/join?code=${inviteCode}`; // Construct the link with the code
+      const fullLink = `${window.location.origin}/join?code=${inviteCode}`;
       setInviteLink(fullLink);
       toast({
         title: "Invite Link Generated! 🔗",
-        description: "Share this link with your friends to join GlobalFam.",
+        description: "Share this link with your friends to join GlobalVibe.",
       });
     } catch (error) {
       console.error("Error generating invite link:", error);
@@ -81,7 +80,7 @@ export default function InvitePage() {
   }
 
   if (!user) {
-    return null; // Or redirect, handled by useEffect
+    return null; 
   }
 
   return (
@@ -92,7 +91,7 @@ export default function InvitePage() {
           Invite Your Friends
         </h1>
         <p className="text-lg text-muted-foreground max-w-md mx-auto">
-          Grow your GlobalFam! Generate a unique link to invite your friends to join the adventure.
+          Grow your GlobalVibe! Generate a unique link to invite your friends to join the adventure.
         </p>
       </section>
 

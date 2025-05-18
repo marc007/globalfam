@@ -11,7 +11,7 @@ interface MapDisplayProps {
   friends: Friend[];
   apiKey: string | undefined;
   currentUser: User | null;
-  targetView?: { center: {lat:number, lng:number}, zoom: number, key: number } | null; // New prop
+  targetView?: { center: {lat:number, lng:number}, zoom: number, key: number } | null;
 }
 
 interface MapPinData {
@@ -22,6 +22,7 @@ interface MapPinData {
   latestStatus?: StatusUpdate;
   position: { lat: number; lng: number };
   isCurrentUser: boolean;
+  isOnline?: boolean; // Added to ensure it's part of the type for clarity
 }
 
 // Mock geocoding - replace with actual Google Geocoding API for production
@@ -33,14 +34,11 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
     hash = ((hash << 5) - hash) + char;
     hash |= 0; // Convert to 32bit integer
   }
-  // Add some noise to base coordinates to avoid all markers at the exact same spot for same city
-  const latNoise = ((hash % 1000) / 5000) - 0.1; // Small noise factor
-  const lngNoise = ((hash % 2000) / 10000) - 0.1; // Small noise factor
+  const latNoise = ((hash % 1000) / 5000) - 0.1; 
+  const lngNoise = ((hash % 2000) / 10000) - 0.1;
 
-  // Simulate API call delay
   await new Promise(resolve => setTimeout(resolve, 50 * Math.random()));
 
-  // Basic mock coordinates for common cities
   const cityLower = city.toLowerCase();
   if (cityLower === "new york") return { lat: 40.7128 + latNoise, lng: -74.0060 + lngNoise };
   if (cityLower === "london") return { lat: 51.5074 + latNoise, lng: -0.1278 + lngNoise };
@@ -48,10 +46,8 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
   if (cityLower === "paris") return { lat: 48.8566 + latNoise, lng: 2.3522 + lngNoise };
   if (cityLower === "sydney") return { lat: -33.8688 + latNoise, lng: 151.2093 + lngNoise };
   
-  // Fallback for other cities - very simplified random generation
-  // This is NOT a real geocoding solution
-  const lat = (hash % 180000) / 1000 - 90 + latNoise; // Random latitude between -90 and 90
-  const lng = (hash % 360000) / 1000 - 180 + lngNoise; // Random longitude between -180 and 180
+  const lat = (hash % 180000) / 1000 - 90 + latNoise; 
+  const lng = (hash % 360000) / 1000 - 180 + lngNoise; 
   return { lat , lng };
 };
 
@@ -60,7 +56,6 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
   const [mapPins, setMapPins] = useState<MapPinData[]>([]);
   const [selectedPin, setSelectedPin] = useState<MapPinData | null>(null);
 
-  // These will now be truly 'initial' or 'default' values for the map instance
   const [initialCenter, setInitialCenter] = useState({ lat: 20, lng: 0 });
   const [initialZoom, setInitialZoom] = useState(2);
 
@@ -83,7 +78,8 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
             newMapPins.push({
               ...friend,
               position: coords,
-              isCurrentUser: false
+              isCurrentUser: false,
+              isOnline: friend.isOnline,
             });
           }
         }
@@ -107,38 +103,35 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
             location: userLoc,
             position: userCoords,
             isCurrentUser: true,
+            isOnline: true, // Current user is always "online" for their own map view
           };
           newMapPins.push(currentUserPinData);
         }
       }
-      setMapPins(newMapPins); // Set pins first
+      setMapPins(newMapPins); 
 
-      // Determine center and zoom
       let newCenter = { lat: 20, lng: 0 };
       let newZoom = 2;
       const currentTargetViewKey = targetView?.key;
 
       if (targetView && currentTargetViewKey !== prevTargetViewKeyRef.current) {
-        // A new targetView was provided (e.g., from status post)
         newCenter = targetView.center;
         newZoom = targetView.zoom;
       } else {
-        // Default logic: Center on current user if available, else first friend, else global
-        if (currentUserPinData?.position) {
-          newCenter = currentUserPinData.position;
-          newZoom = newMapPins.length === 1 ? 8 : 4; // Zoom 8 if only user, 4 if user + friends
-        } else if (newMapPins.length > 0 && newMapPins[0]?.position) {
-          newCenter = newMapPins[0].position;
-          newZoom = 3; // Broader view if current user not on map but friends are
+        if (currentUserPinData?.position && typeof currentUserPinData.position.lat === 'number' && typeof currentUserPinData.position.lng === 'number') {
+            newCenter = currentUserPinData.position;
+            newZoom = newMapPins.length === 1 ? 8 : 4; 
+        } else if (newMapPins.length > 0 && newMapPins[0]?.position && typeof newMapPins[0].position.lat === 'number' && typeof newMapPins[0].position.lng === 'number') {
+            newCenter = newMapPins[0].position;
+            newZoom = 3;
         }
-        // else it remains global default lat: 20, lng: 0, zoom: 2
       }
       setInitialCenter(newCenter);
       setInitialZoom(newZoom);
       prevTargetViewKeyRef.current = currentTargetViewKey;
     };
     fetchMapPins();
-  }, [friends, currentUser, targetView]); // Added targetView to dependencies
+  }, [friends, currentUser, targetView]); 
 
 
   if (!apiKey) {
@@ -165,7 +158,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border">
       <APIProvider apiKey={apiKey} libraries={['places', 'marker']}>
         <Map
-          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}-${targetView?.key || 'default'}`} // Key change forces re-render with new defaults
+          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}-${targetView?.key || 'default'}`} 
           defaultCenter={initialCenter}
           defaultZoom={initialZoom}
           minZoom={2}
@@ -178,20 +171,40 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
           fullscreenControl={false}
           zoomControl={true}
         >
-          {mapPins.map((pin) => (
-            <AdvancedMarker
-              key={pin.id}
-              position={pin.position}
-              onClick={() => setSelectedPin(pin)}
-              zIndex={pin.isCurrentUser ? 10 : 1}
-            >
-              <Pin
-                background={pin.isCurrentUser ? 'hsl(var(--accent))' : 'hsl(var(--primary))'}
-                borderColor={pin.isCurrentUser ? 'hsl(var(--accent-foreground))' : 'hsl(var(--primary-foreground))'}
-                glyphColor={pin.isCurrentUser ? 'hsl(var(--accent-foreground))' : 'hsl(var(--primary-foreground))'}
-              />
-            </AdvancedMarker>
-          ))}
+          {mapPins.map((pin) => {
+            let pinBgColor: string;
+            let pinBorderColor: string;
+            let pinGlyphColor: string;
+
+            if (pin.isCurrentUser) {
+              pinBgColor = 'hsl(var(--accent))';
+              pinBorderColor = 'hsl(var(--accent-foreground))';
+              pinGlyphColor = 'hsl(var(--accent-foreground))';
+            } else if (pin.isOnline === true) { // Vibing friend
+              pinBgColor = 'hsl(var(--primary))';
+              pinBorderColor = 'hsl(var(--primary-foreground))';
+              pinGlyphColor = 'hsl(var(--primary-foreground))';
+            } else { // Contemplating friend (isOnline is false or undefined)
+              pinBgColor = 'hsl(var(--muted))';
+              pinBorderColor = 'hsl(var(--muted-foreground))';
+              pinGlyphColor = 'hsl(var(--muted-foreground))';
+            }
+
+            return (
+              <AdvancedMarker
+                key={pin.id}
+                position={pin.position}
+                onClick={() => setSelectedPin(pin)}
+                zIndex={pin.isCurrentUser ? 10 : (pin.isOnline ? 5 : 1) } // Current user highest, then online friends, then offline
+              >
+                <Pin
+                  background={pinBgColor}
+                  borderColor={pinBorderColor}
+                  glyphColor={pinGlyphColor}
+                />
+              </AdvancedMarker>
+            );
+          })}
 
           {selectedPin && selectedPin.position && (
             <InfoWindow
@@ -200,7 +213,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
               pixelOffset={[0,-40]}
             >
               <div className="p-2 text-card-foreground bg-card rounded-md shadow-md max-w-xs">
-                <h3 className={`text-md font-semibold ${selectedPin.isCurrentUser ? 'text-accent' : 'text-primary'}`}>{selectedPin.name}</h3>
+                <h3 className={`text-md font-semibold ${selectedPin.isCurrentUser ? 'text-accent' : (selectedPin.isOnline ? 'text-primary' : 'text-muted-foreground') }`}>{selectedPin.name}</h3>
                 <p className="text-sm text-muted-foreground">
                   {selectedPin.location.city}{selectedPin.location.country ? `, ${selectedPin.location.country}` : ''}
                   {(typeof selectedPin.location.latitude === 'number' && typeof selectedPin.location.longitude === 'number') &&
@@ -218,3 +231,4 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     </div>
   );
 }
+

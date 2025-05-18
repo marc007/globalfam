@@ -58,7 +58,7 @@ export default function DashboardPage() {
                 avatarUrl: undefined,
                 location: { city: 'Unknown', country: '' }, 
                 latestStatus: undefined,
-                isOnline: false, // Default to offline until profile loads
+                isOnline: false, 
               });
             }
           });
@@ -96,6 +96,7 @@ export default function DashboardPage() {
                   : f
               )
             );
+            // Pan to friend's status location if it's a new status and has coordinates
             if (latestStatus && latestStatus.userId !== user?.uid && latestStatus.location && typeof latestStatus.location.latitude === 'number' && typeof latestStatus.location.longitude === 'number') {
               setMapTargetView({
                 center: { lat: latestStatus.location.latitude, lng: latestStatus.location.longitude },
@@ -145,6 +146,10 @@ export default function DashboardPage() {
     }
   };
 
+  const handleTargetViewApplied = () => {
+    setMapTargetView(null); // Reset target view after it's been applied by the map
+  };
+
   if (authLoading || !isClient) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -165,9 +170,8 @@ export default function DashboardPage() {
   const sortedFriends = [...friends].sort((a, b) => {
     const aOnline = a.isOnline === true;
     const bOnline = b.isOnline === true;
-    if (aOnline && !bOnline) return -1; // a comes first
-    if (!aOnline && bOnline) return 1;  // b comes first
-    // Optional: secondary sort by name if online status is the same
+    if (aOnline && !bOnline) return -1;
+    if (!aOnline && bOnline) return 1; 
     return (a.name || '').localeCompare(b.name || '');
   });
   
@@ -189,7 +193,8 @@ export default function DashboardPage() {
           friends={friends} 
           apiKey={mapsApiKey} 
           currentUser={user}
-          targetView={mapTargetView} 
+          targetView={mapTargetView}
+          onTargetViewApplied={handleTargetViewApplied} 
         />
       </section>
       

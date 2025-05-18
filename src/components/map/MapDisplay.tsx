@@ -12,6 +12,7 @@ interface MapDisplayProps {
   apiKey: string | undefined;
   currentUser: User | null;
   targetView?: { center: {lat:number, lng:number}, zoom: number, key: number } | null;
+  onTargetViewApplied?: () => void; // Callback when targetView has been processed
 }
 
 interface MapPinData {
@@ -25,59 +26,74 @@ interface MapPinData {
   isOnline?: boolean;
 }
 
-// Mock geocoding function - replace with actual Google Geocoding API calls for production
-// This version adds small random noise to base coordinates for variety.
 const geocodeLocation = async (city: string, country: string): Promise<{ lat: number; lng: number } | null> => {
-  // Simple hash function to generate somewhat consistent "random" noise based on input string
   let hash = 0;
   for (let i = 0; i < (city + country).length; i++) {
     const char = (city + country).charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0; 
   }
-
-  // Generate noise based on hash. Range: approx -0.1 to 0.1
-  const latNoise = ((hash % 1000) / 5000) - 0.1; // Smaller noise for latitude
-  const lngNoise = ((hash % 2000) / 10000) - 0.1; // Smaller noise for longitude
-
-  // Simulate API call delay
+  const latNoise = ((hash % 1000) / 5000) - 0.1;
+  const lngNoise = ((hash % 2000) / 10000) - 0.1;
   await new Promise(resolve => setTimeout(resolve, 50 * Math.random()));
-
-  // Example base coordinates for some cities - expand as needed or use a real geocoding service
   const cityLower = city.toLowerCase();
   if (cityLower === "new york") return { lat: 40.7128 + latNoise, lng: -74.0060 + lngNoise };
   if (cityLower === "london") return { lat: 51.5074 + latNoise, lng: -0.1278 + lngNoise };
   if (cityLower === "tokyo") return { lat: 35.6895 + latNoise, lng: 139.6917 + lngNoise };
   if (cityLower === "paris") return { lat: 48.8566 + latNoise, lng: 2.3522 + lngNoise };
   if (cityLower === "sydney") return { lat: -33.8688 + latNoise, lng: 151.2093 + lngNoise };
-  
-  // Fallback for unknown cities using hash for pseudo-random global coordinates
-  // This will distribute unknown cities somewhat randomly across the globe.
-  const lat = (hash % 180000) / 1000 - 90 + latNoise; // Range: -90 to 90
-  const lng = (hash % 360000) / 1000 - 180 + lngNoise; // Range: -180 to 180
+  const lat = (hash % 180000) / 1000 - 90 + latNoise;
+  const lng = (hash % 360000) / 1000 - 180 + lngNoise;
   return { lat , lng };
 };
 
-
-export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisplayProps) {
+export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetViewApplied }: MapDisplayProps) {
   const [mapPins, setMapPins] = useState<MapPinData[]>([]);
   const [selectedPin, setSelectedPin] = useState<MapPinData | null>(null);
+  
+  const defaultGlobalCenter = { lat: 20, lng: 0 };
+  const defaultGlobalZoom = 2;
 
-  // State for map's center and zoom, to be controlled by various factors
-  const [initialCenter, setInitialCenter] = useState({ lat: 20, lng: 0 });
-  const [initialZoom, setInitialZoom] = useState(2);
+  const [currentMapCenter, setCurrentMapCenter] = useState(defaultGlobalCenter);
+  const [currentMapZoom, setCurrentMapZoom] = useState(defaultGlobalZoom);
+  const [currentMapKey, setCurrentMapKey] = useState('initial-map-load');
+
   const prevTargetViewKeyRef = useRef<number | undefined>();
-  const places = useMapsLibrary('places'); // For geocoding fallback if needed
+  const places = useMapsLibrary('places'); // For bounds calculation
 
   useEffect(() => {
-    const processPins = async () => {
+    const processPinsAndDetermineView = async () => {
       if (!places && friends.some(f => f.location && !(typeof f.location.latitude === 'number' && typeof f.location.longitude === 'number'))) {
-        // console.log("Places library not ready and geocoding might be needed, deferring pin processing.");
         return;
       }
 
       const processedPins: MapPinData[] = [];
+      let currentUserPinData: MapPinData | undefined = undefined;
 
+      // Process current user
+      if (currentUser?.currentLocation) {
+        const userLoc = currentUser.currentLocation;
+        let userCoords: { lat: number; lng: number } | null = null;
+        if (typeof userLoc.latitude === 'number' && typeof userLoc.longitude === 'number') {
+          userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
+        } else if (userLoc.city && userLoc.country && places) {
+          userCoords = await geocodeLocation(userLoc.city, userLoc.country);
+        }
+        if (userCoords) {
+          currentUserPinData = {
+            id: currentUser.uid,
+            name: currentUser.name || 'Your Location',
+            avatarUrl: currentUser.avatarUrl,
+            location: userLoc,
+            position: userCoords,
+            isCurrentUser: true,
+            isOnline: true,
+          };
+          processedPins.push(currentUserPinData);
+        }
+      }
+
+      // Process friends
       for (const friend of friends) {
         if (friend.location) {
           let coords: { lat: number; lng: number } | null = null;
@@ -86,7 +102,6 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
           } else if (friend.location.city && friend.location.country && places) {
             coords = await geocodeLocation(friend.location.city, friend.location.country);
           }
-
           if (coords) {
             processedPins.push({
               id: friend.id,
@@ -101,58 +116,76 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
           }
         }
       }
-
-      let newInitialCenter = { lat: 20, lng: 0 };
-      let newInitialZoom = 2;
-      let currentUserPinData: MapPinData | undefined = undefined;
-
-      if (currentUser?.currentLocation) {
-        const userLoc = currentUser.currentLocation;
-        let userCoords: { lat: number; lng: number } | null = null;
-        if (typeof userLoc.latitude === 'number' && typeof userLoc.longitude === 'number') {
-          userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
-        } else if (userLoc.city && userLoc.country && places) {
-          userCoords = await geocodeLocation(userLoc.city, userLoc.country);
-        }
-
-        if (userCoords) {
-          currentUserPinData = {
-            id: currentUser.uid,
-            name: currentUser.name || 'Your Location',
-            avatarUrl: currentUser.avatarUrl,
-            location: userLoc,
-            position: userCoords,
-            isCurrentUser: true,
-            isOnline: true,
-          };
-          processedPins.push(currentUserPinData);
-          newInitialCenter = currentUserPinData.position; // Center on current user
-          newInitialZoom = 10;
-        }
-      } else if (processedPins.length > 0 && processedPins[0]?.position) {
-        // No current user location, center on the first friend if available
-        newInitialCenter = processedPins[0].position;
-        newInitialZoom = 10;
-      }
-      // Else, it remains the global default { lat: 20, lng: 0 }, zoom: 2
-
-      // Override with targetView if provided and key has changed
-      const currentTargetViewKey = targetView?.key;
-      const prevKey = prevTargetViewKeyRef.current;
-
-      if (targetView && currentTargetViewKey !== undefined && currentTargetViewKey !== prevKey) {
-        newInitialCenter = targetView.center;
-        newInitialZoom = targetView.zoom;
-      }
-      prevTargetViewKeyRef.current = currentTargetViewKey;
-
       setMapPins(processedPins);
-      setInitialCenter(newInitialCenter);
-      setInitialZoom(newInitialZoom);
+
+      let newCenter = defaultGlobalCenter;
+      let newZoom = defaultGlobalZoom;
+      let viewDeterminedBy = 'default';
+
+      const activeTargetViewKey = targetView?.key;
+      const lastProcessedTargetKey = prevTargetViewKeyRef.current;
+
+      if (targetView && activeTargetViewKey !== undefined && activeTargetViewKey !== lastProcessedTargetKey) {
+        newCenter = targetView.center;
+        newZoom = targetView.zoom;
+        viewDeterminedBy = `target-${activeTargetViewKey}`;
+        prevTargetViewKeyRef.current = activeTargetViewKey;
+        onTargetViewApplied?.(); // Notify parent that target view was applied
+      } else {
+         // Clear ref if targetView is no longer active or new, to allow overview recalculation
+        if (lastProcessedTargetKey !== undefined && (activeTargetViewKey === undefined || activeTargetViewKey === lastProcessedTargetKey) ) {
+             prevTargetViewKeyRef.current = undefined;
+        }
+
+        if (processedPins.length === 1 && processedPins[0]?.position) {
+          newCenter = processedPins[0].position;
+          newZoom = 10;
+          viewDeterminedBy = `single-pin-${processedPins[0].id}`;
+        } else if (processedPins.length > 1 && places) {
+          const bounds = new places.LatLngBounds();
+          processedPins.forEach(pin => {
+            if (pin.position && typeof pin.position.lat === 'number' && typeof pin.position.lng === 'number') {
+              bounds.extend(new places.LatLng(pin.position.lat, pin.position.lng));
+            }
+          });
+          if (!bounds.isEmpty()) {
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+            if (ne && sw) { // Ensure bounds are valid before using them
+              newCenter = { lat: bounds.getCenter().lat(), lng: bounds.getCenter().lng() };
+              const latDiff = Math.abs(ne.lat() - sw.lat());
+              const lngDiff = Math.abs(ne.lng() - sw.lng());
+              if (latDiff > 120 || lngDiff > 240) newZoom = 2;
+              else if (latDiff > 60 || lngDiff > 120) newZoom = 3;
+              else if (latDiff > 30 || lngDiff > 60) newZoom = 4;
+              else if (latDiff > 15 || lngDiff > 30) newZoom = 5;
+              else if (latDiff > 5 || lngDiff > 10) newZoom = 6;
+              else if (latDiff > 1 || lngDiff > 2) newZoom = 8;
+              else newZoom = 10;
+              viewDeterminedBy = `bounds-${processedPins.length}-${Date.now()}`; // Add timestamp to ensure key changes
+            } else {
+              // Fallback if bounds.ne or .sw is null/undefined
+              viewDeterminedBy = 'bounds-invalid';
+            }
+          } else {
+            // Fallback if bounds are empty (e.g., no valid pins with coords)
+            viewDeterminedBy = 'bounds-empty';
+          }
+        } else if (currentUserPinData?.position) { // Only current user
+            newCenter = currentUserPinData.position;
+            newZoom = 10;
+            viewDeterminedBy = `current-user-only-${currentUser?.uid}`;
+        }
+        // If still default, viewDeterminedBy remains 'default'
+      }
+      
+      setCurrentMapCenter(newCenter);
+      setCurrentMapZoom(newZoom);
+      setCurrentMapKey(`map-${newCenter.lat.toFixed(4)}-${newCenter.lng.toFixed(4)}-${newZoom}-${viewDeterminedBy}`);
     };
 
-    processPins();
-  }, [friends, currentUser, targetView, places]);
+    processPinsAndDetermineView();
+  }, [friends, currentUser, targetView, places, onTargetViewApplied]);
 
 
   if (!apiKey) {
@@ -167,9 +200,6 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
           <p className="text-destructive-foreground">
             Google Maps API key is not configured. Please set the <code className="bg-destructive/20 px-1 py-0.5 rounded">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> environment variable.
           </p>
-          <p className="text-sm text-muted-foreground mt-2">
-            For development, you can obtain a free API key from the Google Cloud Console. Make sure to enable the "Maps JavaScript API", "Geocoding API", and "Places API".
-          </p>
         </CardContent>
       </Card>
     );
@@ -179,9 +209,9 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border">
       <APIProvider apiKey={apiKey} libraries={['places', 'marker']}>
         <Map
-          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}-${targetView?.key || 'default'}`}
-          defaultCenter={initialCenter}
-          defaultZoom={initialZoom}
+          key={currentMapKey}
+          defaultCenter={currentMapCenter}
+          defaultZoom={currentMapZoom}
           minZoom={2}
           gestureHandling={'greedy'}
           disableDefaultUI={true}
@@ -205,7 +235,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
               pinBgColor = 'hsl(var(--primary))';
               pinBorderColor = 'hsl(var(--primary-foreground))';
               pinGlyphColor = 'hsl(var(--primary-foreground))';
-            } else { // Offline or undefined
+            } else { 
               pinBgColor = 'hsl(var(--muted))';
               pinBorderColor = 'hsl(var(--muted-foreground))';
               pinGlyphColor = 'hsl(var(--muted-foreground))';
@@ -252,5 +282,3 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     </div>
   );
 }
-
-    

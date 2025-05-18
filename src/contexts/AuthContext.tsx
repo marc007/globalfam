@@ -16,9 +16,9 @@ import {
   type User as FirebaseUser
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { updateUserProfile as updateUserProfileInFirestore } from '@/lib/firebase/users';
+import { updateUserProfile as updateUserProfileInFirestore, getUserProfile } from '@/lib/firebase/users';
 
 interface AuthContextType {
   user: User | null;
@@ -42,16 +42,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
+        
+        // Set online status
+        try {
+          await updateDoc(userDocRef, {
+            isOnline: true,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (error) {
+          // This might fail if the document doesn't exist yet, will be created below
+          console.warn("Could not set online status, user doc might not exist yet:", error);
+        }
+        
         const userDocSnap = await getDoc(userDocRef);
         
-        const fallbackName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'GV'; // Changed
+        const fallbackName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'GV';
         const initials = fallbackName.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
-        const defaultFallbackAvatar = `https://placehold.co/100x100.png?text=${initials || 'GV'}`; // Changed
+        const defaultFallbackAvatar = `https://placehold.co/100x100.png?text=${initials || 'GV'}`;
+
+        let appUser: User;
 
         if (userDocSnap.exists()) {
           const firestoreUser = userDocSnap.data() as UserProfileData;
+          
           let finalAvatarUrl;
-
           if (firebaseUser.photoURL && firebaseUser.photoURL.trim() !== "") {
             finalAvatarUrl = firebaseUser.photoURL;
           } else if (firestoreUser.avatarUrl && firestoreUser.avatarUrl.trim() !== "") {
@@ -62,19 +76,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             finalAvatarUrl = defaultFallbackAvatar;
           }
           
-          const finalDisplayName = firestoreUser.name || firebaseUser.displayName;
+          const finalDisplayName = firestoreUser.name || firebaseUser.displayName || fallbackName;
+          const lastSeenDate = firestoreUser.lastSeen instanceof Timestamp ? firestoreUser.lastSeen.toDate() : undefined;
 
-          setUser({
+          appUser = {
             uid: firebaseUser.uid,
             name: finalDisplayName,
             email: firebaseUser.email,
             avatarUrl: finalAvatarUrl, 
             currentLocation: firestoreUser.currentLocation,
             displayName: finalDisplayName, 
-            photoURL: firebaseUser.photoURL, 
-          });
+            photoURL: firebaseUser.photoURL,
+            isOnline: true, // User is active
+            lastSeen: lastSeenDate,
+          };
+           // Ensure Firestore has the latest from Auth if changed (e.g. Google photo update)
+          const updatesForFirestore: Partial<UserProfileData> = { isOnline: true, lastSeen: serverTimestamp() };
+          if (firebaseUser.displayName && firebaseUser.displayName !== firestoreUser.displayName) {
+            updatesForFirestore.displayName = firebaseUser.displayName;
+            updatesForFirestore.name = firebaseUser.displayName; // Keep name and displayName in sync for simplicity
+          }
+          if (firebaseUser.photoURL && firebaseUser.photoURL !== firestoreUser.photoURL) {
+            updatesForFirestore.photoURL = firebaseUser.photoURL;
+            if(!firestoreUser.avatarUrl){ // Don't overwrite custom avatar with auth photo unless custom is missing
+                 updatesForFirestore.avatarUrl = firebaseUser.photoURL;
+            }
+          }
+          if(Object.keys(updatesForFirestore).length > 2) { // more than just isOnline and lastSeen
+            await updateDoc(userDocRef, updatesForFirestore);
+          }
+
         } else {
-           const newUserName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User';
+           const newUserName = firebaseUser.displayName || fallbackName;
            const initialAvatarForDisplay = (firebaseUser.photoURL && firebaseUser.photoURL.trim() !== "") ? firebaseUser.photoURL : defaultFallbackAvatar;
 
            const newUserProfileData: UserProfileData = {
@@ -86,20 +119,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             currentLocation: null,
             displayName: newUserName,
             friends: [],
-            createdAt: new Date(),
+            createdAt: serverTimestamp(),
+            isOnline: true,
+            lastSeen: serverTimestamp(),
           };
-          await setDoc(doc(db, "users", firebaseUser.uid), newUserProfileData);
+          await setDoc(userDocRef, newUserProfileData);
 
-          setUser({
+          appUser = {
             uid: firebaseUser.uid,
             name: newUserName,
             email: firebaseUser.email,
             avatarUrl: initialAvatarForDisplay, 
             currentLocation: null,
             displayName: newUserName,
-            photoURL: firebaseUser.photoURL, 
-          });
+            photoURL: firebaseUser.photoURL,
+            isOnline: true,
+            lastSeen: new Date(), // approx current time
+          };
         }
+        setUser(appUser);
       } else {
         setUser(null);
       }
@@ -114,11 +152,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const initials = name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
-      const defaultAvatar = `https://placehold.co/100x100.png?text=${initials || 'GV'}`; // Changed
+      const defaultAvatar = `https://placehold.co/100x100.png?text=${initials || 'GV'}`; 
       
       await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
       
-      const updatedFirebaseUser = auth.currentUser!;
+      const updatedFirebaseUser = auth.currentUser!; // Firebase Auth user object
 
       const userDocRef = doc(db, "users", userCredential.user.uid);
       const newUserProfileData: UserProfileData = {
@@ -127,10 +165,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email: email,
         avatarUrl: updatedFirebaseUser.photoURL, 
         photoURL: updatedFirebaseUser.photoURL,  
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         friends: [],
         currentLocation: null,
         displayName: name,
+        isOnline: true,
+        lastSeen: serverTimestamp(),
       };
       await setDoc(userDocRef, newUserProfileData);
 
@@ -142,6 +182,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         currentLocation: null,
         displayName: name,
         photoURL: updatedFirebaseUser.photoURL, 
+        isOnline: true,
+        lastSeen: new Date(),
       });
       setIsLoading(false);
       return userCredential.user;
@@ -156,6 +198,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting user state and online status
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
@@ -167,6 +210,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     setIsLoading(true);
+    if (user && user.uid) {
+      const userDocRef = doc(db, "users", user.uid);
+      try {
+        await updateDoc(userDocRef, {
+          isOnline: false,
+          lastSeen: serverTimestamp(),
+        });
+      } catch (error) {
+        console.error("Error setting user offline in Firestore:", error);
+      }
+    }
     try {
       await firebaseSignOut(auth);
       router.push('/');

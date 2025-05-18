@@ -10,6 +10,8 @@ export interface User {
   currentLocation?: UserLocation | null; // From Firestore profile
   displayName?: string | null; // Fallback from Firebase Auth, or same as name
   photoURL?: string | null; // Canonical photoURL from Firebase Auth
+  isOnline?: boolean;
+  lastSeen?: Date;
 }
 
 // Specifically for data structure in 'users' Firestore collection
@@ -23,6 +25,8 @@ export interface UserProfileData {
   createdAt?: Date | Timestamp; // Firestore Timestamp for creation date, allow Date for easier use
   friends?: string[]; // Array of friend UIDs
   displayName?: string | null;
+  isOnline?: boolean;
+  lastSeen?: Timestamp; // Stored as Timestamp in Firestore
 }
 
 export interface UserLocation {
@@ -38,6 +42,7 @@ export interface Friend {
   avatarUrl?: string;
   location: UserLocation;
   latestStatus?: StatusUpdate;
+  isOnline?: boolean; // Added for online status
 }
 
 export interface StatusUpdate {
@@ -56,7 +61,7 @@ export interface InviteDocumentData {
     expiresAt: Timestamp;
     status: 'pending' | 'used' | 'expired';
     usedByUid?: string;
-    usedAt?: Timestamp;
+    usedAt?: Timestamp; // Timestamp for when it was used
 }
 
 // Invite as used in the application (uses Date)
@@ -68,5 +73,6 @@ export interface Invite {
   expiresAt: Date;
   status: 'pending' | 'used' | 'expired';
   usedByUid?: string;
-  usedAt?: Date;
+  usedAt?: Date; // Date for when it was used
 }
+

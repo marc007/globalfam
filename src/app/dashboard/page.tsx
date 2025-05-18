@@ -12,6 +12,7 @@ import { Loader2, Users, Map as MapIcon, MessageSquare } from 'lucide-react';
 
 import { listenToUserProfile, UserProfile } from '@/lib/firebase/users'; 
 import { listenToLatestUserStatus, StatusUpdate } from '@/lib/firebase/statusUpdates'; 
+import { Timestamp } from 'firebase/firestore';
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -44,7 +45,6 @@ export default function DashboardPage() {
       if (currentUserProfile?.friends) {
         const friendUids = currentUserProfile.friends;
         
-        // Update friends state, preserving existing data if friend still in list
         setFriends(prevFriends => {
           const existingFriendsMap = new Map(prevFriends.map(f => [f.id, f]));
           const freshFriendsArray: Friend[] = [];
@@ -52,21 +52,19 @@ export default function DashboardPage() {
             if (existingFriendsMap.has(uid)) {
               freshFriendsArray.push(existingFriendsMap.get(uid)!);
             } else {
-              // Add new friend with placeholder data, to be filled by listeners
               freshFriendsArray.push({
                 id: uid,
                 name: 'Loading...',
-                avatarUrl: undefined, // Will be populated by friendProfile listener
+                avatarUrl: undefined,
                 location: { city: 'Unknown', country: '' }, 
-                latestStatus: undefined, // Will be populated by friendStatus listener
+                latestStatus: undefined,
+                isOnline: false, // Default to offline until profile loads
               });
             }
           });
-          // Filter out friends no longer in the friendUids list
           return freshFriendsArray.filter(f => friendUids.includes(f.id));
         });
         
-        // For each friend UID, set up individual listeners for their profile and status
         const perFriendListeners: (() => void)[] = [];
         friendUids.forEach(friendUid => {
           const friendProfileUnsub = listenToUserProfile(friendUid, (friendProfile: UserProfile | null) => {
@@ -79,12 +77,12 @@ export default function DashboardPage() {
                         name: friendProfile.displayName || 'Unknown Name',
                         avatarUrl: (friendProfile.photoURL && friendProfile.photoURL.trim() !== "") ? friendProfile.photoURL : (friendProfile.avatarUrl && friendProfile.avatarUrl.trim() !== "") ? friendProfile.avatarUrl : undefined,
                         location: friendProfile.currentLocation || { city: 'Location not set', country: '' },
+                        isOnline: friendProfile.isOnline || false,
                       }
                     : f
                 )
               );
             } else {
-              // If friend profile becomes null (e.g., account deleted), remove them
               setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
             }
           });
@@ -98,12 +96,11 @@ export default function DashboardPage() {
                   : f
               )
             );
-            // If this latest status update is from a friend and has a location, target map view
             if (latestStatus && latestStatus.userId !== user?.uid && latestStatus.location && typeof latestStatus.location.latitude === 'number' && typeof latestStatus.location.longitude === 'number') {
               setMapTargetView({
                 center: { lat: latestStatus.location.latitude, lng: latestStatus.location.longitude },
                 zoom: 12, 
-                key: Date.now() // Unique key to trigger map update
+                key: Date.now() 
               });
             }
           });
@@ -111,32 +108,27 @@ export default function DashboardPage() {
         });
         newListeners.push(...perFriendListeners);
 
-      } else if (!currentUserProfile) { // Current user profile loaded but is null (should not happen if logged in) or no friends
+      } else if (!currentUserProfile) { 
         setFriends([]);
       }
-      // If currentUserProfile.friends is empty or undefined, perFriendListeners will be empty, 
-      // and old listeners for friends (if any) would have been cleared at the start of outer useEffect.
     });
     newListeners.push(userProfileUnsub);
 
     setActiveListeners(newListeners);
 
-    // Cleanup function for all listeners
     return () => {
       newListeners.forEach(unsub => unsub());
     };
-  }, [user?.uid]); // Rerun if user.uid changes (login/logout)
+  }, [user?.uid]); 
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const handleCurrentUserStatusSuccess = () => {
-    // This function is called when the current user successfully posts a status.
-    // We want to center the map on their current location.
     if (user?.currentLocation && typeof user.currentLocation.latitude === 'number' && typeof user.currentLocation.longitude === 'number') {
       setMapTargetView({
         center: { lat: user.currentLocation.latitude, lng: user.currentLocation.longitude },
-        zoom: 12, // Or a preferred zoom level
-        key: Date.now() // Unique key to trigger map update
+        zoom: 12, 
+        key: Date.now() 
       });
     }
   };
@@ -145,12 +137,10 @@ export default function DashboardPage() {
     if (clickedFriend.location && typeof clickedFriend.location.latitude === 'number' && typeof clickedFriend.location.longitude === 'number') {
       setMapTargetView({
         center: { lat: clickedFriend.location.latitude, lng: clickedFriend.location.longitude },
-        zoom: 12, // Or a preferred zoom level
-        key: Date.now() // Unique key to trigger map update
+        zoom: 12, 
+        key: Date.now() 
       });
     } else if (clickedFriend.location && clickedFriend.location.city) {
-      // If no lat/lng, could potentially trigger geocoding here, but for simplicity we'll rely on MapDisplay's internal geocoding for pins
-      // Or you could show a toast "Location details incomplete for direct map focus"
       console.log("Friend location has city/country but no explicit lat/lng for direct focus via card click.");
     }
   };
@@ -165,7 +155,6 @@ export default function DashboardPage() {
   }
 
   if (!user) {
-    // This case should ideally be handled by the redirect in the first useEffect
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)]">
         <p className="text-xl text-muted-foreground">Redirecting to login...</p>
@@ -179,7 +168,7 @@ export default function DashboardPage() {
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
           Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">{user.displayName || user.email || 'Global Explorer'}</span>!
         </h1>
-        <p className="text-lg text-muted-foreground">Here's what your GlobalFam is up to.</p>
+        <p className="text-lg text-muted-foreground">Here's what your GlobalVibe is up to.</p>
       </section>
 
       <section className="space-y-6">

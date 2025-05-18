@@ -4,14 +4,14 @@
 import type { Friend } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, MessageSquare, CalendarDays } from "lucide-react";
+import { MapPin, MessageSquare, CalendarDays, Circle } from "lucide-react"; // Added Circle
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 
 interface FriendCardProps {
   friend: Friend;
-  onCardClick?: (friend: Friend) => void; // New prop
+  onCardClick?: (friend: Friend) => void;
 }
 
 const getInitials = (name?: string | null) => {
@@ -24,6 +24,7 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
   const [textColorClass, setTextColorClass] = useState('');
 
   useEffect(() => {
+    // Ensure this runs only on the client
     const cardColors = [
       { border: 'border-accent', text: 'text-accent' },
       { border: 'border-secondary', text: 'text-secondary' },
@@ -45,21 +46,28 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
       onCardClick(friend);
     }
   };
+  
+  const statusBadgeText = friend.isOnline ? "Vibing" : "Contemplating";
+  const statusBadgeVariant = friend.isOnline ? "default" : "outline";
+  const statusIndicatorColor = friend.isOnline ? "text-green-500" : "text-muted-foreground";
 
   return (
     <Card 
       className={`bg-card/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 rounded-xl border-2 ${borderColorClass || 'border-transparent'} cursor-pointer`}
-      onClick={handleCardClick} // Added onClick handler
+      onClick={handleCardClick}
     >
-      <CardHeader className="flex flex-row items-center gap-4 pb-3">
+      <CardHeader className="flex flex-row items-start gap-4 pb-3">
         <Avatar className="h-16 w-16 border-4 border-background shadow-md">
           <AvatarImage src={friend.avatarUrl} alt={friend.name || 'Friend'} data-ai-hint="profile avatar" />
           <AvatarFallback className="text-xl bg-muted-foreground text-background font-bold">
             {getInitials(friend.name)}
           </AvatarFallback>
         </Avatar>
-        <div>
-          <CardTitle className="text-2xl font-bold text-foreground">{friend.name || 'Friend'}</CardTitle>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-2xl font-bold text-foreground">{friend.name || 'Friend'}</CardTitle>
+            <Circle className={`h-3 w-3 ${statusIndicatorColor} fill-current`} />
+          </div>
           {friend.location && (
             <div className="flex items-center text-sm text-muted-foreground mt-1">
               <MapPin className="h-4 w-4 mr-1.5 text-accent" />
@@ -85,7 +93,9 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
         )}
       </CardContent>
       <CardFooter className="flex justify-end pt-2">
-        <Badge variant="outline" className={`border-current ${textColorClass || 'text-muted-foreground'}`}>Vibing</Badge>
+        <Badge variant={statusBadgeVariant} className={friend.isOnline ? `border-current ${textColorClass || 'text-muted-foreground'}` : `border-muted-foreground/50 text-muted-foreground`}>
+          {statusBadgeText}
+        </Badge>
       </CardFooter>
     </Card>
   );

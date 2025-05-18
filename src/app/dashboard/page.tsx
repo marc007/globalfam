@@ -36,6 +36,7 @@ export default function DashboardPage() {
       return;
     }
 
+    // Clean up previous listeners
     activeListeners.forEach(unsub => unsub());
     const newListeners: (() => void)[] = [];
 
@@ -43,6 +44,7 @@ export default function DashboardPage() {
       if (currentUserProfile?.friends) {
         const friendUids = currentUserProfile.friends;
         
+        // Update friends state, preserving existing data if friend still in list
         setFriends(prevFriends => {
           const existingFriendsMap = new Map(prevFriends.map(f => [f.id, f]));
           const freshFriendsArray: Friend[] = [];
@@ -50,18 +52,21 @@ export default function DashboardPage() {
             if (existingFriendsMap.has(uid)) {
               freshFriendsArray.push(existingFriendsMap.get(uid)!);
             } else {
+              // Add new friend with placeholder data, to be filled by listeners
               freshFriendsArray.push({
                 id: uid,
                 name: 'Loading...',
-                avatarUrl: undefined,
+                avatarUrl: undefined, // Will be populated by friendProfile listener
                 location: { city: 'Unknown', country: '' }, 
-                latestStatus: undefined,
+                latestStatus: undefined, // Will be populated by friendStatus listener
               });
             }
           });
+          // Filter out friends no longer in the friendUids list
           return freshFriendsArray.filter(f => friendUids.includes(f.id));
         });
         
+        // For each friend UID, set up individual listeners for their profile and status
         const perFriendListeners: (() => void)[] = [];
         friendUids.forEach(friendUid => {
           const friendProfileUnsub = listenToUserProfile(friendUid, (friendProfile: UserProfile | null) => {
@@ -72,13 +77,14 @@ export default function DashboardPage() {
                     ? {
                         ...f,
                         name: friendProfile.displayName || 'Unknown Name',
-                        avatarUrl: friendProfile.avatarUrl || friendProfile.photoURL || undefined,
+                        avatarUrl: (friendProfile.photoURL && friendProfile.photoURL.trim() !== "") ? friendProfile.photoURL : (friendProfile.avatarUrl && friendProfile.avatarUrl.trim() !== "") ? friendProfile.avatarUrl : undefined,
                         location: friendProfile.currentLocation || { city: 'Location not set', country: '' },
                       }
                     : f
                 )
               );
             } else {
+              // If friend profile becomes null (e.g., account deleted), remove them
               setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
             }
           });
@@ -92,11 +98,12 @@ export default function DashboardPage() {
                   : f
               )
             );
-            if (latestStatus?.location && typeof latestStatus.location.latitude === 'number' && typeof latestStatus.location.longitude === 'number') {
+            // If this latest status update is from a friend and has a location, target map view
+            if (latestStatus && latestStatus.userId !== user?.uid && latestStatus.location && typeof latestStatus.location.latitude === 'number' && typeof latestStatus.location.longitude === 'number') {
               setMapTargetView({
                 center: { lat: latestStatus.location.latitude, lng: latestStatus.location.longitude },
                 zoom: 12, 
-                key: Date.now() 
+                key: Date.now() // Unique key to trigger map update
               });
             }
           });
@@ -104,27 +111,32 @@ export default function DashboardPage() {
         });
         newListeners.push(...perFriendListeners);
 
-      } else if (!currentUserProfile) {
+      } else if (!currentUserProfile) { // Current user profile loaded but is null (should not happen if logged in) or no friends
         setFriends([]);
       }
+      // If currentUserProfile.friends is empty or undefined, perFriendListeners will be empty, 
+      // and old listeners for friends (if any) would have been cleared at the start of outer useEffect.
     });
     newListeners.push(userProfileUnsub);
 
     setActiveListeners(newListeners);
 
+    // Cleanup function for all listeners
     return () => {
       newListeners.forEach(unsub => unsub());
     };
-  }, [user?.uid]);
+  }, [user?.uid]); // Rerun if user.uid changes (login/logout)
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const handleCurrentUserStatusSuccess = () => {
+    // This function is called when the current user successfully posts a status.
+    // We want to center the map on their current location.
     if (user?.currentLocation && typeof user.currentLocation.latitude === 'number' && typeof user.currentLocation.longitude === 'number') {
       setMapTargetView({
         center: { lat: user.currentLocation.latitude, lng: user.currentLocation.longitude },
-        zoom: 12, 
-        key: Date.now() 
+        zoom: 12, // Or a preferred zoom level
+        key: Date.now() // Unique key to trigger map update
       });
     }
   };
@@ -153,6 +165,7 @@ export default function DashboardPage() {
   }
 
   if (!user) {
+    // This case should ideally be handled by the redirect in the first useEffect
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)]">
         <p className="text-xl text-muted-foreground">Redirecting to login...</p>

@@ -161,6 +161,15 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  const sortedFriends = [...friends].sort((a, b) => {
+    const aOnline = a.isOnline === true;
+    const bOnline = b.isOnline === true;
+    if (aOnline && !bOnline) return -1; // a comes first
+    if (!aOnline && bOnline) return 1;  // b comes first
+    // Optional: secondary sort by name if online status is the same
+    return (a.name || '').localeCompare(b.name || '');
+  });
   
   return (
     <div className="space-y-12">
@@ -190,7 +199,7 @@ export default function DashboardPage() {
             <Users className="h-8 w-8 text-secondary" />
             <h2 className="text-3xl font-semibold">Your Fam</h2>
           </div>
-          <FriendList friends={friends} onFriendCardClick={handleFriendCardClick} />
+          <FriendList friends={sortedFriends} onFriendCardClick={handleFriendCardClick} />
         </section>
 
         <section className="md:col-span-1 space-y-6 md:sticky md:top-24">

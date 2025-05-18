@@ -24,17 +24,22 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
   const [textColorClass, setTextColorClass] = useState('');
 
   useEffect(() => {
-    // Ensure this runs only on the client
-    const cardColors = [
-      { border: 'border-accent', text: 'text-accent' },
-      { border: 'border-secondary', text: 'text-secondary' },
-      { border: 'border-green-400', text: 'text-green-400' },
-      { border: 'border-primary', text: 'text-primary' }
-    ];
-    const randomChoice = cardColors[Math.floor(Math.random() * cardColors.length)];
-    setBorderColorClass(randomChoice.border);
-    setTextColorClass(randomChoice.text);
-  }, []); // Empty dependency array ensures this runs once on mount when client hydrates
+    if (friend.isOnline) {
+      const cardColors = [
+        { border: 'border-accent', text: 'text-accent' },
+        { border: 'border-secondary', text: 'text-secondary' },
+        { border: 'border-green-400', text: 'text-green-400' },
+        { border: 'border-primary', text: 'text-primary' }
+      ];
+      const randomChoice = cardColors[Math.floor(Math.random() * cardColors.length)];
+      setBorderColorClass(randomChoice.border);
+      setTextColorClass(randomChoice.text);
+    } else {
+      // Offline or undefined status
+      setBorderColorClass('border-muted-foreground');
+      setTextColorClass('text-muted-foreground');
+    }
+  }, [friend.isOnline]); // Re-run if online status changes
 
 
   const locationDisplay = friend.location

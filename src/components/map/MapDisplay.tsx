@@ -3,7 +3,7 @@
 
 import type { Friend, User, UserLocation, StatusUpdate } from '@/types';
 import React, { useState, useEffect, useRef } from 'react';
-import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMapsLibrary } from '@vis.gl/react-google-maps';
 import { Globe } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -22,17 +22,15 @@ interface MapPinData {
   latestStatus?: StatusUpdate;
   position: { lat: number; lng: number };
   isCurrentUser: boolean;
-  isOnline?: boolean; // Added to ensure it's part of the type for clarity
+  isOnline?: boolean;
 }
 
-// Mock geocoding - replace with actual Google Geocoding API for production
 const geocodeLocation = async (city: string, country: string): Promise<{ lat: number; lng: number } | null> => {
-  // Simple hash to get pseudo-randomness for mock locations
   let hash = 0;
   for (let i = 0; i < (city + country).length; i++) {
     const char = (city + country).charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0; 
   }
   const latNoise = ((hash % 1000) / 5000) - 0.1; 
   const lngNoise = ((hash % 2000) / 10000) - 0.1;
@@ -56,17 +54,20 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
   const [mapPins, setMapPins] = useState<MapPinData[]>([]);
   const [selectedPin, setSelectedPin] = useState<MapPinData | null>(null);
 
-  const [initialCenter, setInitialCenter] = useState({ lat: 20, lng: 0 });
-  const [initialZoom, setInitialZoom] = useState(2);
+  const [effectiveCenter, setEffectiveCenter] = useState({ lat: 20, lng: 0 });
+  const [effectiveZoom, setEffectiveZoom] = useState(2);
 
   const prevTargetViewKeyRef = useRef<number | undefined>();
+  const places = useMapsLibrary('places');
 
   useEffect(() => {
-    const fetchMapPins = async () => {
-      const newMapPins: MapPinData[] = [];
+    if (!places) return; 
+
+    const processPinsAndSetView = async () => {
+      const newProcessedPins: MapPinData[] = [];
 
       for (const friend of friends) {
-        if (friend.location && (friend.location.city || (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number'))) {
+        if (friend.location && (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number' || (friend.location.city && friend.location.country))) {
           let coords: { lat: number; lng: number } | null = null;
           if (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number') {
              coords = { lat: friend.location.latitude, lng: friend.location.longitude };
@@ -75,8 +76,12 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
           }
 
           if (coords) {
-            newMapPins.push({
-              ...friend,
+            newProcessedPins.push({
+              id: friend.id,
+              name: friend.name,
+              avatarUrl: (friend.photoURL && friend.photoURL.trim() !== "") ? friend.photoURL : (friend.avatarUrl && friend.avatarUrl.trim() !== "") ? friend.avatarUrl : undefined,
+              location: friend.location,
+              latestStatus: friend.latestStatus,
               position: coords,
               isCurrentUser: false,
               isOnline: friend.isOnline,
@@ -94,7 +99,6 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
         } else if (userLoc.city && userLoc.country) {
           userCoords = await geocodeLocation(userLoc.city, userLoc.country);
         }
-
         if (userCoords) {
           currentUserPinData = {
             id: currentUser.uid,
@@ -103,35 +107,70 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
             location: userLoc,
             position: userCoords,
             isCurrentUser: true,
-            isOnline: true, // Current user is always "online" for their own map view
+            isOnline: true, 
           };
-          newMapPins.push(currentUserPinData);
+          newProcessedPins.push(currentUserPinData);
         }
       }
-      setMapPins(newMapPins); 
+      setMapPins(newProcessedPins); 
 
       let newCenter = { lat: 20, lng: 0 };
       let newZoom = 2;
+      
       const currentTargetViewKey = targetView?.key;
+      const prevKey = prevTargetViewKeyRef.current;
+      prevTargetViewKeyRef.current = currentTargetViewKey;
 
-      if (targetView && currentTargetViewKey !== prevTargetViewKeyRef.current) {
+
+      if (targetView && currentTargetViewKey !== prevKey) {
         newCenter = targetView.center;
         newZoom = targetView.zoom;
       } else {
-        if (currentUserPinData?.position && typeof currentUserPinData.position.lat === 'number' && typeof currentUserPinData.position.lng === 'number') {
-            newCenter = currentUserPinData.position;
-            newZoom = newMapPins.length === 1 ? 8 : 4; 
-        } else if (newMapPins.length > 0 && newMapPins[0]?.position && typeof newMapPins[0].position.lat === 'number' && typeof newMapPins[0].position.lng === 'number') {
-            newCenter = newMapPins[0].position;
-            newZoom = 3;
+        if (newProcessedPins.length > 0) {
+          if (newProcessedPins.length === 1 && newProcessedPins[0]?.position) {
+            newCenter = newProcessedPins[0].position;
+            newZoom = 10; 
+          } else {
+            const bounds = new places.LatLngBounds();
+            let validPinsForBounds = 0;
+            newProcessedPins.forEach(pin => {
+              if (pin.position && typeof pin.position.lat === 'number' && typeof pin.position.lng === 'number') {
+                bounds.extend(new places.LatLng(pin.position.lat, pin.position.lng));
+                validPinsForBounds++;
+              }
+            });
+
+            if (validPinsForBounds > 0 && !bounds.isEmpty()) {
+              newCenter = bounds.getCenter().toJSON();
+              const northEast = bounds.getNorthEast();
+              const southWest = bounds.getSouthWest();
+              const latSpan = Math.abs(northEast.lat() - southWest.lat());
+              const lngSpan = Math.abs(northEast.lng() - southWest.lng());
+
+              if (latSpan === 0 && lngSpan === 0 && validPinsForBounds > 0) { 
+                newZoom = 12; 
+              } else if (latSpan > 90 || lngSpan > 180) { newZoom = 2; }
+              else if (latSpan > 30 || lngSpan > 60) { newZoom = 3; }
+              else if (latSpan > 10 || lngSpan > 20) { newZoom = 4; }
+              else if (latSpan > 1 || lngSpan > 1) { newZoom = 6; }
+              else { newZoom = 8; }
+            } else { 
+              newCenter = { lat: 20, lng: 0 };
+              newZoom = 2;
+            }
+          }
+        } else {
+          newCenter = { lat: 20, lng: 0 };
+          newZoom = 2;
         }
       }
-      setInitialCenter(newCenter);
-      setInitialZoom(newZoom);
-      prevTargetViewKeyRef.current = currentTargetViewKey;
+      
+      setEffectiveCenter(newCenter);
+      setEffectiveZoom(newZoom);
     };
-    fetchMapPins();
-  }, [friends, currentUser, targetView]); 
+
+    processPinsAndSetView();
+  }, [friends, currentUser, targetView, places]); 
 
 
   if (!apiKey) {
@@ -158,9 +197,9 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border">
       <APIProvider apiKey={apiKey} libraries={['places', 'marker']}>
         <Map
-          key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}-${targetView?.key || 'default'}`} 
-          defaultCenter={initialCenter}
-          defaultZoom={initialZoom}
+          key={`${effectiveCenter.lat}-${effectiveCenter.lng}-${effectiveZoom}-${targetView?.key || 'default'}`} 
+          defaultCenter={effectiveCenter}
+          defaultZoom={effectiveZoom}
           minZoom={2}
           gestureHandling={'greedy'}
           disableDefaultUI={true}
@@ -180,11 +219,11 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
               pinBgColor = 'hsl(var(--accent))';
               pinBorderColor = 'hsl(var(--accent-foreground))';
               pinGlyphColor = 'hsl(var(--accent-foreground))';
-            } else if (pin.isOnline === true) { // Vibing friend
+            } else if (pin.isOnline === true) { 
               pinBgColor = 'hsl(var(--primary))';
               pinBorderColor = 'hsl(var(--primary-foreground))';
               pinGlyphColor = 'hsl(var(--primary-foreground))';
-            } else { // Contemplating friend (isOnline is false or undefined)
+            } else { 
               pinBgColor = 'hsl(var(--muted))';
               pinBorderColor = 'hsl(var(--muted-foreground))';
               pinGlyphColor = 'hsl(var(--muted-foreground))';
@@ -195,7 +234,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
                 key={pin.id}
                 position={pin.position}
                 onClick={() => setSelectedPin(pin)}
-                zIndex={pin.isCurrentUser ? 10 : (pin.isOnline ? 5 : 1) } // Current user highest, then online friends, then offline
+                zIndex={pin.isCurrentUser ? 10 : (pin.isOnline ? 5 : 1) }
               >
                 <Pin
                   background={pinBgColor}
@@ -231,4 +270,3 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     </div>
   );
 }
-

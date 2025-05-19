@@ -61,18 +61,20 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
   const [currentMapKey, setCurrentMapKey] = useState('initial-map-load');
 
   const prevTargetViewKeyRef = useRef<number | undefined>();
-  const places = useMapsLibrary('places'); 
+  const places = useMapsLibrary('places'); // For geocoding fallback
 
   useEffect(() => {
     const processPinsAndDetermineView = async () => {
+      // Ensure places library is loaded if geocoding might be needed
       const mightNeedGeocoding = friends.some(f => f.location && !(typeof f.location.latitude === 'number' && typeof f.location.longitude === 'number')) ||
                                 (currentUser?.currentLocation && !(typeof currentUser.currentLocation.latitude === 'number' && typeof currentUser.currentLocation.longitude === 'number'));
       if (mightNeedGeocoding && !places) {
-        return; 
+        return; // Wait for places library
       }
 
       const localProcessedPins: MapPinData[] = [];
 
+      // Process current user
       if (currentUser?.currentLocation) {
         const userLoc = currentUser.currentLocation;
         let userCoords: { lat: number; lng: number } | null = null;
@@ -94,6 +96,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
         }
       }
 
+      // Process friends
       for (const friend of friends) {
         if (friend.location) {
           let coords: { lat: number; lng: number } | null = null;
@@ -129,55 +132,61 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
         newZoom = targetView.zoom;
         viewDeterminedBy = `target-${activeTargetViewKey}`;
         if (onTargetViewApplied) {
-          onTargetViewApplied(); 
+          onTargetViewApplied(); // Signal that targetView has been applied
         }
         prevTargetViewKeyRef.current = activeTargetViewKey;
       } else {
-        prevTargetViewKeyRef.current = undefined; 
+        prevTargetViewKeyRef.current = undefined; // Reset if targetView is null or same as before
 
-        if (localProcessedPins.length > 0 && places) { // Ensure places is loaded for LatLngBounds
+        if (localProcessedPins.length > 0) {
           if (localProcessedPins.length === 1) {
             newCenter = localProcessedPins[0].position;
-            newZoom = 10; 
+            newZoom = 10; // Zoom in on a single pin
             viewDeterminedBy = `overview-single-pin-${localProcessedPins[0].id}`;
-          } else { 
-            const bounds = new places.LatLngBounds();
+          } else { // More than one pin, calculate average center and span for zoom
+            let sumLat = 0;
+            let sumLng = 0;
+            let minLat = 90;
+            let maxLat = -90;
+            let minLng = 180;
+            let maxLng = -180;
+
             localProcessedPins.forEach(pin => {
               if (pin.position && typeof pin.position.lat === 'number' && typeof pin.position.lng === 'number') {
-                bounds.extend(new places.LatLng(pin.position.lat, pin.position.lng));
+                sumLat += pin.position.lat;
+                sumLng += pin.position.lng;
+                minLat = Math.min(minLat, pin.position.lat);
+                maxLat = Math.max(maxLat, pin.position.lat);
+                minLng = Math.min(minLng, pin.position.lng);
+                maxLng = Math.max(maxLng, pin.position.lng);
               }
             });
 
-            if (!bounds.isEmpty()) {
-              const ne = bounds.getNorthEast();
-              const sw = bounds.getSouthWest();
+            // Calculate average for center
+            // Note: Direct longitude averaging can be problematic across the 180th meridian.
+            // For a more robust solution with global points, convert to Cartesian, average, then convert back.
+            // However, for points generally clustered, this direct average is simpler.
+            newCenter = { 
+              lat: sumLat / localProcessedPins.length, 
+              lng: sumLng / localProcessedPins.length 
+            };
 
-              if(ne && sw) {
-                newCenter = bounds.getCenter().toJSON();
+            // Heuristic for zoom based on latitude/longitude span
+            const latSpan = Math.abs(maxLat - minLat);
+            const lngSpan = Math.abs(maxLng - minLng); // This simple span doesn't handle dateline crossing well for zoom.
 
-                const latSpan = Math.abs(ne.lat() - sw.lat());
-                const lngSpan = Math.abs(ne.lng() - sw.lng());
-
-                if (latSpan > 120 || lngSpan > 200) newZoom = 2;
-                else if (latSpan > 60 || lngSpan > 100) newZoom = 3;
-                else if (latSpan > 30 || lngSpan > 50) newZoom = 4;
-                else if (latSpan > 15 || lngSpan > 25) newZoom = 5;
-                else if (latSpan > 5 || lngSpan > 10) newZoom = 6;
-                else if (latSpan > 1 || lngSpan > 2) newZoom = 8;
-                else newZoom = 10;
-                
-                viewDeterminedBy = `overview-bounds-center-${localProcessedPins.length}-${Date.now()}`;
-              } else {
-                 viewDeterminedBy = `overview-bounds-emptyNE_SW-${Date.now()}`;
-              }
-            } else {
-                viewDeterminedBy = `overview-bounds-empty-${Date.now()}`;
-            }
+            if (latSpan > 120 || lngSpan > 200) newZoom = 2;
+            else if (latSpan > 60 || lngSpan > 100) newZoom = 3;
+            else if (latSpan > 30 || lngSpan > 50) newZoom = 4;
+            else if (latSpan > 15 || lngSpan > 25) newZoom = 5;
+            else if (latSpan > 5 || lngSpan > 10) newZoom = 6;
+            else if (latSpan > 1 || lngSpan > 2) newZoom = 8;
+            else newZoom = 10;
+            
+            viewDeterminedBy = `overview-avg-center-${localProcessedPins.length}-${Date.now()}`;
           }
-        } else if (localProcessedPins.length === 0) {
+        } else {
           viewDeterminedBy = 'overview-no-pins';
-        } else if (!places) {
-          viewDeterminedBy = 'overview-places-not-loaded';
         }
       }
       
@@ -284,4 +293,3 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
     </div>
   );
 }
-

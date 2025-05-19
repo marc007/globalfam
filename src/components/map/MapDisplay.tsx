@@ -34,10 +34,10 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
     hash = ((hash << 5) - hash) + char;
     hash |= 0;
   }
-  const latNoise = ((hash % 1000) / 5000) - 0.1; 
-  const lngNoise = ((hash % 2000) / 10000) - 0.1; 
+  const latNoise = ((hash % 1000) / 5000) - 0.1; // Max +/- 0.1 degrees for some variance
+  const lngNoise = ((hash % 2000) / 10000) - 0.1; // Max +/- 0.1 degrees for some variance
 
-  await new Promise(resolve => setTimeout(resolve, 20 + (30 * Math.random())));
+  await new Promise(resolve => setTimeout(resolve, 20 + (30 * Math.random()))); // Faster mock geocoding
 
   const cityLower = city ? city.toLowerCase() : "";
   const countryLower = country ? country.toLowerCase() : "";
@@ -47,7 +47,7 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
   if (cityLower === "san francisco") return { lat: 37.7749 + latNoise, lng: -122.4194 + lngNoise };
   if (cityLower === "seattle") return { lat: 47.6062 + latNoise, lng: -122.3321 + lngNoise };
   if (cityLower === "san diego") return { lat: 32.7157 + latNoise, lng: -117.1611 + lngNoise };
-  if (cityLower === "portland" && (countryLower === "united states" || countryLower === "usa")) return { lat: 45.5051 + latNoise, lng: -122.6750 + lngNoise };
+  if (cityLower === "portland" && countryLower === "united states") return { lat: 45.5051 + latNoise, lng: -122.6750 + lngNoise };
   
   // Other common mock cities
   if (cityLower === "new york") return { lat: 40.7128 + latNoise, lng: -74.0060 + lngNoise };
@@ -56,7 +56,7 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
   if (cityLower === "paris") return { lat: 48.8566 + latNoise, lng: 2.3522 + lngNoise };
   if (cityLower === "sydney") return { lat: -33.8688 + latNoise, lng: 151.2093 + lngNoise };
 
-  // Fallback
+  // Fallback to wider, more random global coordinates if no specific city match
   const lat = (hash % 180000) / 1000 - 90 + latNoise;
   const lng = (hash % 360000) / 1000 - 180 + lngNoise;
   return { lat , lng };
@@ -65,7 +65,6 @@ const geocodeLocation = async (city: string, country: string): Promise<{ lat: nu
 
 export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetViewApplied }: MapDisplayProps) {
   const [selectedPin, setSelectedPin] = useState<MapPinData | null>(null);
-  const [localProcessedPins, setLocalProcessedPins] = useState<MapPinData[]>([]);
   
   const defaultGlobalCenter = { lat: 20, lng: 0 };
   const defaultGlobalZoom = 2;
@@ -79,7 +78,13 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
 
   useEffect(() => {
     const processPinsAndDetermineView = async () => {
-      const currentPins: MapPinData[] = [];
+      const mightNeedGeocoding = friends.some(f => f.location && !(typeof f.location.latitude === 'number' && typeof f.location.longitude === 'number')) ||
+                                (currentUser?.currentLocation && !(typeof currentUser.currentLocation.latitude === 'number' && typeof currentUser.currentLocation.longitude === 'number'));
+      if (mightNeedGeocoding && !places) {
+        return;
+      }
+
+      const localProcessedPins: MapPinData[] = [];
 
       if (currentUser?.currentLocation) {
         const userLoc = currentUser.currentLocation;
@@ -90,14 +95,14 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
           userCoords = await geocodeLocation(userLoc.city, userLoc.country);
         }
         if (userCoords && typeof userCoords.lat === 'number' && typeof userCoords.lng === 'number') {
-          currentPins.push({
+          localProcessedPins.push({
             id: currentUser.uid,
             name: currentUser.name || 'Your Location',
             avatarUrl: currentUser.avatarUrl,
             location: userLoc,
             position: userCoords,
             isCurrentUser: true,
-            isOnline: true, 
+            isOnline: true,
           });
         }
       }
@@ -111,7 +116,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
             coords = await geocodeLocation(friend.location.city, friend.location.country);
           }
           if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
-            currentPins.push({
+            localProcessedPins.push({
               id: friend.id,
               name: friend.name,
               avatarUrl: (friend.photoURL && friend.photoURL.trim() !== "") ? friend.photoURL : (friend.avatarUrl && friend.avatarUrl.trim() !== "") ? friend.avatarUrl : undefined,
@@ -124,7 +129,6 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
           }
         }
       }
-      setLocalProcessedPins(currentPins);
       
       let newCenter = defaultGlobalCenter;
       let newZoom = defaultGlobalZoom;
@@ -140,18 +144,19 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
         }
         prevTargetViewKeyRef.current = activeTargetViewKey;
       } else {
+        // Reset prevTargetViewKeyRef if targetView is null or key matches (already processed)
         if (!targetView || (activeTargetViewKey !== undefined && activeTargetViewKey === prevTargetViewKeyRef.current)) {
-            prevTargetViewKeyRef.current = undefined; // Reset if target is null or already processed
+            prevTargetViewKeyRef.current = undefined;
         }
 
-        if (currentPins.length > 0 && places) {
-          if (currentPins.length === 1) {
-            newCenter = currentPins[0].position;
+        if (localProcessedPins.length > 0 && places) {
+          if (localProcessedPins.length === 1) {
+            newCenter = localProcessedPins[0].position;
             newZoom = 10;
-            viewDeterminedBy = `overview-single-pin-${currentPins[0].id}-${Date.now()}`;
+            viewDeterminedBy = `overview-single-pin-${localProcessedPins[0].id}-${Date.now()}`;
           } else {
             const bounds = new places.LatLngBounds();
-            currentPins.forEach(pin => {
+            localProcessedPins.forEach(pin => {
               if (pin.position && typeof pin.position.lat === 'number' && typeof pin.position.lng === 'number') {
                 bounds.extend(new places.LatLng(pin.position.lat, pin.position.lng));
               }
@@ -165,7 +170,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
                 newCenter = bounds.getCenter().toJSON();
                 
                 const latSpan = Math.abs(ne.lat() - sw.lat());
-                const lngSpan = Math.abs(ne.lng() - sw.lng()); // Use absolute for longitude span
+                const lngSpan = Math.abs(ne.lng() - sw.lng());
                 const maxSpan = Math.max(latSpan, lngSpan);
 
                 if (maxSpan > 90) newZoom = 2;       // Very wide, e.g., multiple continents
@@ -178,20 +183,17 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
                 else if (maxSpan > 0.1) newZoom = 10;// Neighborhood
                 else newZoom = 12;                   // Very close points
 
-                viewDeterminedBy = `overview-bounds-${currentPins.length}-${Date.now()}`;
+                viewDeterminedBy = `overview-bounds-${localProcessedPins.length}-${Date.now()}`;
               } else {
                 viewDeterminedBy = `overview-bounds-invalid-nesw-${Date.now()}`;
-                // Fallback to default if bounds calculation is problematic
-                newCenter = defaultGlobalCenter;
-                newZoom = defaultGlobalZoom;
               }
             } else {
               viewDeterminedBy = `overview-bounds-empty-${Date.now()}`;
             }
           }
-        } else if (currentPins.length === 0) { // No pins at all
+        } else if (localProcessedPins.length === 0) {
           viewDeterminedBy = `overview-no-pins-${Date.now()}`;
-        } else if (!places) { // Places library not loaded yet
+        } else if (!places) {
           viewDeterminedBy = `overview-places-not-loaded-${Date.now()}`;
         }
       }
@@ -239,7 +241,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
           fullscreenControl={false}
           zoomControl={true}
         >
-          {localProcessedPins.map((pin) => {
+          {localProcessedPins.map((pin) => { // Changed mapPins to localProcessedPins for consistency inside the effect
             let pinBgColor: string;
             let pinBorderColor: string;
             let pinGlyphColor: string;
@@ -252,7 +254,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
               pinBgColor = 'hsl(var(--primary))';
               pinBorderColor = 'hsl(var(--primary-foreground))';
               pinGlyphColor = 'hsl(var(--primary-foreground))';
-            } else { // Offline friend or undefined status
+            } else {
               pinBgColor = 'hsl(var(--muted))';
               pinBorderColor = 'hsl(var(--muted-foreground))';
               pinGlyphColor = 'hsl(var(--muted-foreground))';

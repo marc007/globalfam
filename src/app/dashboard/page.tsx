@@ -29,6 +29,10 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, router]);
 
+  const handleTargetViewApplied = () => {
+    setMapTargetView(null);
+  };
+
   useEffect(() => {
     if (!user?.uid) {
       setFriends([]);
@@ -62,6 +66,7 @@ export default function DashboardPage() {
               });
             }
           });
+          // Filter out friends that are no longer in friendUids but keep existing data for those that are
           return freshFriendsArray.filter(f => friendUids.includes(f.id));
         });
         
@@ -77,12 +82,13 @@ export default function DashboardPage() {
                         name: friendProfile.displayName || 'Unknown Name',
                         avatarUrl: (friendProfile.photoURL && friendProfile.photoURL.trim() !== "") ? friendProfile.photoURL : (friendProfile.avatarUrl && friendProfile.avatarUrl.trim() !== "") ? friendProfile.avatarUrl : undefined,
                         location: friendProfile.currentLocation || { city: 'Location not set', country: '' },
-                        isOnline: friendProfile.isOnline || false,
+                        isOnline: friendProfile.isOnline || false, // Ensure isOnline is a boolean
                       }
                     : f
                 )
               );
             } else {
+              // If a friend's profile is removed or inaccessible, remove them from the list
               setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
             }
           });
@@ -108,7 +114,7 @@ export default function DashboardPage() {
         });
         newListeners.push(...perFriendListeners);
 
-      } else if (!currentUserProfile) { 
+      } else if (!currentUserProfile) { // User profile doesn't exist or no friends field
         setFriends([]);
       }
     });
@@ -119,7 +125,7 @@ export default function DashboardPage() {
     return () => {
       newListeners.forEach(unsub => unsub());
     };
-  }, [user?.uid]); 
+  }, [user?.uid]); // Re-run if user.uid changes
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -190,6 +196,7 @@ export default function DashboardPage() {
           apiKey={mapsApiKey} 
           currentUser={user}
           targetView={mapTargetView} 
+          onTargetViewApplied={handleTargetViewApplied}
         />
       </section>
       
@@ -213,3 +220,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    

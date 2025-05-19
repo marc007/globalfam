@@ -4,7 +4,7 @@
 import type { Friend } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, MessageSquare, CalendarDays, Circle } from "lucide-react"; // Added Circle
+import { MapPin, MessageSquare, CalendarDays, Circle } from "lucide-react";
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
@@ -20,18 +20,21 @@ const getInitials = (name?: string | null) => {
 };
 
 export function FriendCard({ friend, onCardClick }: FriendCardProps) {
-  const [borderColorClass, setBorderColorClass] = useState('');
-  const [textColorClass, setTextColorClass] = useState('');
+  const [borderColorClass, setBorderColorClass] = useState('border-muted-foreground');
+  const [textColorClass, setTextColorClass] = useState('text-muted-foreground');
 
   useEffect(() => {
-    if (friend.isOnline) {
+    if (friend.isOnline === true) {
       const cardColors = [
         { border: 'border-accent', text: 'text-accent' },
         { border: 'border-secondary', text: 'text-secondary' },
         { border: 'border-green-400', text: 'text-green-400' },
         { border: 'border-primary', text: 'text-primary' }
       ];
-      const randomChoice = cardColors[Math.floor(Math.random() * cardColors.length)];
+      // To avoid hydration issues with Math.random on server vs client,
+      // we derive a "random" choice based on friend's ID length or similar pseudo-random but deterministic approach.
+      const choiceIndex = friend.id.charCodeAt(friend.id.length - 1) % cardColors.length;
+      const randomChoice = cardColors[choiceIndex];
       setBorderColorClass(randomChoice.border);
       setTextColorClass(randomChoice.text);
     } else {
@@ -39,7 +42,7 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
       setBorderColorClass('border-muted-foreground');
       setTextColorClass('text-muted-foreground');
     }
-  }, [friend.isOnline]); // Re-run if online status changes
+  }, [friend.isOnline, friend.id]);
 
 
   const locationDisplay = friend.location
@@ -52,18 +55,21 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
     }
   };
   
-  const statusBadgeText = friend.isOnline ? "Vibing" : "Contemplating";
-  const statusBadgeVariant = friend.isOnline ? "default" : "outline";
-  const statusIndicatorColor = friend.isOnline ? "text-green-500" : "text-muted-foreground";
+  const statusBadgeText = friend.isOnline === true ? "Vibing" : "Contemplating";
+  const statusBadgeVariant = friend.isOnline === true ? "default" : "outline";
+  const statusIndicatorColor = friend.isOnline === true ? "text-green-500" : "text-muted-foreground";
 
   return (
     <Card 
-      className={`bg-card/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 rounded-xl border-2 ${borderColorClass || 'border-transparent'} cursor-pointer`}
+      className={`bg-card/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 rounded-xl border-2 ${borderColorClass} cursor-pointer`}
       onClick={handleCardClick}
     >
       <CardHeader className="flex flex-row items-start gap-4 pb-3">
         <Avatar className="h-16 w-16 border-4 border-background shadow-md">
-          <AvatarImage src={(friend.photoURL && friend.photoURL.trim() !== "") ? friend.photoURL : (friend.avatarUrl && friend.avatarUrl.trim() !== "") ? friend.avatarUrl : undefined} alt={friend.name || 'Friend'} data-ai-hint="profile avatar" />
+          <AvatarImage 
+            src={(friend.photoURL && friend.photoURL.trim() !== "") ? friend.photoURL : (friend.avatarUrl && friend.avatarUrl.trim() !== "") ? friend.avatarUrl : undefined} 
+            alt={friend.name || 'Friend'} 
+            data-ai-hint="profile avatar" />
           <AvatarFallback className="text-xl bg-muted-foreground text-background font-bold">
             {getInitials(friend.name)}
           </AvatarFallback>
@@ -100,7 +106,7 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
       <CardFooter className="flex justify-end pt-2">
         <Badge
           variant={statusBadgeVariant}
-          className={friend.isOnline ? `bg-transparent hover:bg-transparent border-current ${textColorClass || 'text-muted-foreground'}` : `border-muted-foreground/50 text-muted-foreground`}
+          className={friend.isOnline === true ? `bg-transparent hover:bg-transparent border-current ${textColorClass}` : `border-muted-foreground/50 text-muted-foreground`}
         >
           {statusBadgeText}
         </Badge>
@@ -108,3 +114,5 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
     </Card>
   );
 }
+
+    

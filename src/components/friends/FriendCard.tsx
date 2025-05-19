@@ -31,8 +31,6 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
         { border: 'border-green-400', text: 'text-green-400' },
         { border: 'border-primary', text: 'text-primary' }
       ];
-      // To avoid hydration issues with Math.random on server vs client,
-      // we derive a "random" choice based on friend's ID length or similar pseudo-random but deterministic approach.
       const choiceIndex = friend.id.charCodeAt(friend.id.length - 1) % cardColors.length;
       const randomChoice = cardColors[choiceIndex];
       setBorderColorClass(randomChoice.border);

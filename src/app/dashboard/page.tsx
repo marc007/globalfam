@@ -41,7 +41,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Clean up previous listeners
     activeListeners.forEach(unsub => unsub());
     const newListeners: (() => void)[] = [];
 
@@ -62,11 +61,10 @@ export default function DashboardPage() {
                 avatarUrl: undefined,
                 location: { city: 'Unknown', country: '' }, 
                 latestStatus: undefined,
-                isOnline: false, // Default to offline until profile loads
+                isOnline: false, 
               });
             }
           });
-          // Filter out friends that are no longer in friendUids but keep existing data for those that are
           return freshFriendsArray.filter(f => friendUids.includes(f.id));
         });
         
@@ -82,13 +80,12 @@ export default function DashboardPage() {
                         name: friendProfile.displayName || 'Unknown Name',
                         avatarUrl: (friendProfile.photoURL && friendProfile.photoURL.trim() !== "") ? friendProfile.photoURL : (friendProfile.avatarUrl && friendProfile.avatarUrl.trim() !== "") ? friendProfile.avatarUrl : undefined,
                         location: friendProfile.currentLocation || { city: 'Location not set', country: '' },
-                        isOnline: friendProfile.isOnline || false, // Ensure isOnline is a boolean
+                        isOnline: friendProfile.isOnline || false,
                       }
                     : f
                 )
               );
             } else {
-              // If a friend's profile is removed or inaccessible, remove them from the list
               setFriends(prevFriends => prevFriends.filter(f => f.id !== friendUid));
             }
           });
@@ -114,7 +111,7 @@ export default function DashboardPage() {
         });
         newListeners.push(...perFriendListeners);
 
-      } else if (!currentUserProfile) { // User profile doesn't exist or no friends field
+      } else if (!currentUserProfile) { 
         setFriends([]);
       }
     });
@@ -125,7 +122,7 @@ export default function DashboardPage() {
     return () => {
       newListeners.forEach(unsub => unsub());
     };
-  }, [user?.uid]); // Re-run if user.uid changes
+  }, [user?.uid]); 
 
   const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -173,7 +170,6 @@ export default function DashboardPage() {
     const bOnline = b.isOnline === true;
     if (aOnline && !bOnline) return -1; // a comes first
     if (!aOnline && bOnline) return 1;  // b comes first
-    // Optional: secondary sort by name if online status is the same
     return (a.name || '').localeCompare(b.name || '');
   });
   

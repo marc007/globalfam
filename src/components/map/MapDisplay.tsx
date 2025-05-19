@@ -12,7 +12,7 @@ interface MapDisplayProps {
   apiKey: string | undefined;
   currentUser: User | null;
   targetView?: { center: {lat:number, lng:number}, zoom: number, key: number } | null;
-  onTargetViewApplied?: () => void;
+  onTargetViewApplied?: () => void; // Callback when targetView has been processed
 }
 
 interface MapPinData {
@@ -26,36 +26,26 @@ interface MapPinData {
   isOnline?: boolean;
 }
 
-// Simplified geocodeLocation for demonstration, replace with actual geocoding if needed
 const geocodeLocation = async (city: string, country: string): Promise<{ lat: number; lng: number } | null> => {
-  // Simple hash-based mock geocoding to provide somewhat consistent "random" locations
   let hash = 0;
   for (let i = 0; i < (city + country).length; i++) {
     const char = (city + country).charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0; 
   }
-  // Generate slight variations to avoid all pins being in the exact same spot for the same city
-  const latNoise = ((hash % 1000) / 5000) - 0.1; // Range: -0.1 to 0.1
-  const lngNoise = ((hash % 2000) / 10000) - 0.1; // Range: -0.1 to 0.1
-
-  // Simulate API call delay
+  const latNoise = ((hash % 1000) / 5000) - 0.1;
+  const lngNoise = ((hash % 2000) / 10000) - 0.1;
   await new Promise(resolve => setTimeout(resolve, 50 * Math.random()));
-
-  // Example known locations
   const cityLower = city.toLowerCase();
   if (cityLower === "new york") return { lat: 40.7128 + latNoise, lng: -74.0060 + lngNoise };
   if (cityLower === "london") return { lat: 51.5074 + latNoise, lng: -0.1278 + lngNoise };
   if (cityLower === "tokyo") return { lat: 35.6895 + latNoise, lng: 139.6917 + lngNoise };
   if (cityLower === "paris") return { lat: 48.8566 + latNoise, lng: 2.3522 + lngNoise };
   if (cityLower === "sydney") return { lat: -33.8688 + latNoise, lng: 151.2093 + lngNoise };
-  
-  // Fallback for unknown cities - very rough pseudo-random based on hash
-  const lat = (hash % 180000) / 1000 - 90 + latNoise; // Range: -90 to 90
-  const lng = (hash % 360000) / 1000 - 180 + lngNoise; // Range: -180 to 180
+  const lat = (hash % 180000) / 1000 - 90 + latNoise;
+  const lng = (hash % 360000) / 1000 - 180 + lngNoise;
   return { lat , lng };
 };
-
 
 export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetViewApplied }: MapDisplayProps) {
   const [mapPins, setMapPins] = useState<MapPinData[]>([]);
@@ -69,17 +59,16 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
   const [currentMapKey, setCurrentMapKey] = useState('initial-map-load');
 
   const prevTargetViewKeyRef = useRef<number | undefined>();
-  const places = useMapsLibrary('places');
+  const places = useMapsLibrary('places'); // For bounds calculation
 
   useEffect(() => {
     const processPinsAndDetermineView = async () => {
-      if (!places && (friends.some(f => f.location && !(typeof f.location.latitude === 'number' && typeof f.location.longitude === 'number')) || 
-                     (currentUser?.currentLocation && !(typeof currentUser.currentLocation.latitude === 'number' && typeof currentUser.currentLocation.longitude === 'number')))) {
-        // Wait for places library if geocoding might be needed
+      if (!places && friends.some(f => f.location && !(typeof f.location.latitude === 'number' && typeof f.location.longitude === 'number'))) {
         return;
       }
 
-      const localProcessedPins: MapPinData[] = [];
+      const processedPins: MapPinData[] = [];
+      let currentUserPinData: MapPinData | undefined = undefined;
 
       // Process current user
       if (currentUser?.currentLocation) {
@@ -91,15 +80,16 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
           userCoords = await geocodeLocation(userLoc.city, userLoc.country);
         }
         if (userCoords) {
-          localProcessedPins.push({
+          currentUserPinData = {
             id: currentUser.uid,
             name: currentUser.name || 'Your Location',
             avatarUrl: currentUser.avatarUrl,
             location: userLoc,
             position: userCoords,
             isCurrentUser: true,
-            isOnline: true, // Current user is always "online" for their own map view
-          });
+            isOnline: true,
+          };
+          processedPins.push(currentUserPinData);
         }
       }
 
@@ -113,7 +103,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
             coords = await geocodeLocation(friend.location.city, friend.location.country);
           }
           if (coords) {
-            localProcessedPins.push({
+            processedPins.push({
               id: friend.id,
               name: friend.name,
               avatarUrl: (friend.photoURL && friend.photoURL.trim() !== "") ? friend.photoURL : (friend.avatarUrl && friend.avatarUrl.trim() !== "") ? friend.avatarUrl : undefined,
@@ -126,12 +116,11 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
           }
         }
       }
-      setMapPins(localProcessedPins); // Update the pins to be rendered
+      setMapPins(processedPins);
 
-      // Determine map view
       let newCenter = defaultGlobalCenter;
       let newZoom = defaultGlobalZoom;
-      let viewDeterminedBy = 'default-load';
+      let viewDeterminedBy = 'default';
 
       const activeTargetViewKey = targetView?.key;
       const lastProcessedTargetKey = prevTargetViewKeyRef.current;
@@ -140,17 +129,21 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
         newCenter = targetView.center;
         newZoom = targetView.zoom;
         viewDeterminedBy = `target-${activeTargetViewKey}`;
-        if (onTargetViewApplied) {
-          onTargetViewApplied();
-        }
         prevTargetViewKeyRef.current = activeTargetViewKey;
+        onTargetViewApplied?.(); // Notify parent that target view was applied
       } else {
-        // No new targetView, calculate overview or default
-        prevTargetViewKeyRef.current = undefined; // Reset to allow future targetViews or overview recalculation
+         // Clear ref if targetView is no longer active or new, to allow overview recalculation
+        if (lastProcessedTargetKey !== undefined && (activeTargetViewKey === undefined || activeTargetViewKey === lastProcessedTargetKey) ) {
+             prevTargetViewKeyRef.current = undefined;
+        }
 
-        if (localProcessedPins.length > 1 && places) {
+        if (processedPins.length === 1 && processedPins[0]?.position) {
+          newCenter = processedPins[0].position;
+          newZoom = 10;
+          viewDeterminedBy = `single-pin-${processedPins[0].id}`;
+        } else if (processedPins.length > 1 && places) {
           const bounds = new places.LatLngBounds();
-          localProcessedPins.forEach(pin => {
+          processedPins.forEach(pin => {
             if (pin.position && typeof pin.position.lat === 'number' && typeof pin.position.lng === 'number') {
               bounds.extend(new places.LatLng(pin.position.lat, pin.position.lng));
             }
@@ -158,30 +151,32 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
           if (!bounds.isEmpty()) {
             const ne = bounds.getNorthEast();
             const sw = bounds.getSouthWest();
-            if (ne && sw) {
+            if (ne && sw) { // Ensure bounds are valid before using them
               newCenter = { lat: bounds.getCenter().lat(), lng: bounds.getCenter().lng() };
-              // Simple heuristic for zoom based on latitude difference
               const latDiff = Math.abs(ne.lat() - sw.lat());
-              if (latDiff > 120) newZoom = 2; // Very spread out
-              else if (latDiff > 60) newZoom = 3;
-              else if (latDiff > 30) newZoom = 4;
-              else if (latDiff > 15) newZoom = 5;
-              else if (latDiff > 5) newZoom = 6;
-              else if (latDiff > 1) newZoom = 8;
-              else newZoom = 10; // Closer
-              viewDeterminedBy = `overview-bounds-${localProcessedPins.length}-${Date.now()}`;
+              const lngDiff = Math.abs(ne.lng() - sw.lng());
+              if (latDiff > 120 || lngDiff > 240) newZoom = 2;
+              else if (latDiff > 60 || lngDiff > 120) newZoom = 3;
+              else if (latDiff > 30 || lngDiff > 60) newZoom = 4;
+              else if (latDiff > 15 || lngDiff > 30) newZoom = 5;
+              else if (latDiff > 5 || lngDiff > 10) newZoom = 6;
+              else if (latDiff > 1 || lngDiff > 2) newZoom = 8;
+              else newZoom = 10;
+              viewDeterminedBy = `bounds-${processedPins.length}-${Date.now()}`; // Add timestamp to ensure key changes
             } else {
-              viewDeterminedBy = 'overview-bounds-invalid';
+              // Fallback if bounds.ne or .sw is null/undefined
+              viewDeterminedBy = 'bounds-invalid';
             }
           } else {
-            viewDeterminedBy = 'overview-bounds-empty'; // No valid pins for bounds
+            // Fallback if bounds are empty (e.g., no valid pins with coords)
+            viewDeterminedBy = 'bounds-empty';
           }
-        } else if (localProcessedPins.length === 1 && localProcessedPins[0]?.position) {
-          newCenter = localProcessedPins[0].position;
-          newZoom = 10; // Zoom in on a single pin
-          viewDeterminedBy = `overview-single-pin-${localProcessedPins[0].id}`;
+        } else if (currentUserPinData?.position) { // Only current user
+            newCenter = currentUserPinData.position;
+            newZoom = 10;
+            viewDeterminedBy = `current-user-only-${currentUser?.uid}`;
         }
-        // If localProcessedPins is empty, it will use defaultGlobalCenter/Zoom and initial 'default-load' or 'default-map-view'
+        // If still default, viewDeterminedBy remains 'default'
       }
       
       setCurrentMapCenter(newCenter);
@@ -287,5 +282,3 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView, onTargetV
     </div>
   );
 }
-
-    

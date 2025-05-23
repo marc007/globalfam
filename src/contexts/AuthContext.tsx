@@ -3,7 +3,7 @@
 
 import type { User, UserProfileData } from '@/types';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
   onAuthStateChanged,
   signOut as firebaseSignOut,
@@ -33,25 +33,97 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const INACTIVITY_TIMEOUT = 30 * 1000; // 30 seconds
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const userRef = useRef(user); // Ref to access current user in timer/event handlers
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const updateUserOnlineStatus = useCallback(async (isOnline: boolean) => {
+    if (userRef.current && userRef.current.uid) {
+      const userDocRef = doc(db, "users", userRef.current.uid);
+      try {
+        await updateDoc(userDocRef, {
+          isOnline: isOnline,
+          lastSeen: serverTimestamp(),
+        });
+        setUser(currentUser => currentUser ? { ...currentUser, isOnline, lastSeen: new Date() } : null);
+      } catch (error) {
+        console.warn("Error updating online status:", error);
+      }
+    }
+  }, []);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    if (userRef.current && userRef.current.isOnline === false && document.visibilityState === 'visible') {
+        // If user was marked offline due to inactivity but is now active
+        updateUserOnlineStatus(true);
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      updateUserOnlineStatus(false);
+    }, INACTIVITY_TIMEOUT);
+  }, [updateUserOnlineStatus]);
+
+  useEffect(() => {
+    const handleActivity = () => {
+        if (document.visibilityState === 'visible') {
+            resetInactivityTimer();
+        }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        updateUserOnlineStatus(true);
+        resetInactivityTimer();
+      } else {
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+        }
+        updateUserOnlineStatus(false);
+      }
+    };
+
+    // Add event listeners for user activity
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keypress', handleActivity);
+    window.addEventListener('scroll', handleActivity);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Initial timer reset
+    resetInactivityTimer();
+
+    return () => {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keypress', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [resetInactivityTimer, updateUserOnlineStatus]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, "users", firebaseUser.uid);
-        
-        // Set online status
         try {
           await updateDoc(userDocRef, {
             isOnline: true,
             lastSeen: serverTimestamp(),
           });
         } catch (error) {
-          // This might fail if the document doesn't exist yet, will be created below
-          console.warn("Could not set online status, user doc might not exist yet:", error);
+          console.warn("Could not set online status on auth change, user doc might not exist yet:", error);
         }
         
         const userDocSnap = await getDoc(userDocRef);
@@ -64,20 +136,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (userDocSnap.exists()) {
           const firestoreUser = userDocSnap.data() as UserProfileData;
-          
-          let finalAvatarUrl;
-          if (firebaseUser.photoURL && firebaseUser.photoURL.trim() !== "") {
-            finalAvatarUrl = firebaseUser.photoURL;
-          } else if (firestoreUser.avatarUrl && firestoreUser.avatarUrl.trim() !== "") {
-            finalAvatarUrl = firestoreUser.avatarUrl;
-          } else if (firestoreUser.photoURL && firestoreUser.photoURL.trim() !== "") {
-            finalAvatarUrl = firestoreUser.photoURL;
-          } else {
-            finalAvatarUrl = defaultFallbackAvatar;
-          }
-          
+          let finalAvatarUrl = firebaseUser.photoURL || firestoreUser.avatarUrl || firestoreUser.photoURL || defaultFallbackAvatar;
           const finalDisplayName = firestoreUser.name || firebaseUser.displayName || fallbackName;
-          const lastSeenDate = firestoreUser.lastSeen instanceof Timestamp ? firestoreUser.lastSeen.toDate() : undefined;
+          const lastSeenDate = firestoreUser.lastSeen instanceof Timestamp ? firestoreUser.lastSeen.toDate() : new Date();
 
           appUser = {
             uid: firebaseUser.uid,
@@ -87,23 +148,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             currentLocation: firestoreUser.currentLocation,
             displayName: finalDisplayName, 
             photoURL: firebaseUser.photoURL,
-            isOnline: true, // User is active
+            isOnline: true, 
             lastSeen: lastSeenDate,
           };
-           // Ensure Firestore has the latest from Auth if changed (e.g. Google photo update)
+
           const updatesForFirestore: Partial<UserProfileData> = { isOnline: true, lastSeen: serverTimestamp() };
           if (firebaseUser.displayName && firebaseUser.displayName !== firestoreUser.displayName) {
             updatesForFirestore.displayName = firebaseUser.displayName;
-            updatesForFirestore.name = firebaseUser.displayName; // Keep name and displayName in sync for simplicity
+            updatesForFirestore.name = firebaseUser.displayName;
           }
           if (firebaseUser.photoURL && firebaseUser.photoURL !== firestoreUser.photoURL) {
             updatesForFirestore.photoURL = firebaseUser.photoURL;
-            if(!firestoreUser.avatarUrl){ // Don't overwrite custom avatar with auth photo unless custom is missing
+            if(!firestoreUser.avatarUrl){ 
                  updatesForFirestore.avatarUrl = firebaseUser.photoURL;
             }
           }
-          if(Object.keys(updatesForFirestore).length > 2) { // more than just isOnline and lastSeen
-            await updateDoc(userDocRef, updatesForFirestore);
+          if(Object.keys(updatesForFirestore).length > 2) { 
+            await updateDoc(userDocRef, updatesForFirestore).catch(err => console.warn("Error updating user doc on auth change", err));
           }
 
         } else {
@@ -134,18 +195,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             displayName: newUserName,
             photoURL: firebaseUser.photoURL,
             isOnline: true,
-            lastSeen: new Date(), // approx current time
+            lastSeen: new Date(), 
           };
         }
         setUser(appUser);
+        userRef.current = appUser; // Update ref here as well
+        resetInactivityTimer(); // Start tracking activity for the new user
       } else {
+        if (userRef.current) { // If there was a user, mark them offline
+            updateUserOnlineStatus(false);
+        }
         setUser(null);
+        userRef.current = null;
+        if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current);
+        }
       }
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => {
+        unsubscribe();
+        if (inactivityTimerRef.current) {
+            clearTimeout(inactivityTimerRef.current);
+        }
+    }
+  }, [resetInactivityTimer, updateUserOnlineStatus]);
 
   const signUp = async (name: string, email: string, password: string): Promise<FirebaseUser | null> => {
     setIsLoading(true);
@@ -156,7 +231,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       await updateProfile(userCredential.user, { displayName: name, photoURL: defaultAvatar });
       
-      const updatedFirebaseUser = auth.currentUser!; // Firebase Auth user object
+      const updatedFirebaseUser = auth.currentUser!;
 
       const userDocRef = doc(db, "users", userCredential.user.uid);
       const newUserProfileData: UserProfileData = {
@@ -174,7 +249,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       await setDoc(userDocRef, newUserProfileData);
 
-      setUser({ 
+      const appUser = { 
         uid: userCredential.user.uid,
         name: name,
         email: email,
@@ -184,8 +259,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         photoURL: updatedFirebaseUser.photoURL, 
         isOnline: true,
         lastSeen: new Date(),
-      });
+      };
+      setUser(appUser);
+      userRef.current = appUser;
       setIsLoading(false);
+      resetInactivityTimer();
       return userCredential.user;
     } catch (error) {
       console.error("Error signing up:", error);
@@ -198,7 +276,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting user state and online status
+      // onAuthStateChanged will handle setting user state and online status and resetting inactivity timer
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
@@ -210,23 +288,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     setIsLoading(true);
-    if (user && user.uid) {
-      const userDocRef = doc(db, "users", user.uid);
-      try {
-        await updateDoc(userDocRef, {
-          isOnline: false,
-          lastSeen: serverTimestamp(),
-        });
-      } catch (error) {
-        console.error("Error setting user offline in Firestore:", error);
-      }
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
     }
+    await updateUserOnlineStatus(false); // Set offline before signing out
     try {
       await firebaseSignOut(auth);
       router.push('/');
     } catch (error) {
       console.error("Error signing out: ", error);
     } finally {
+      setUser(null); 
+      userRef.current = null;
       setIsLoading(false);
     }
   };
@@ -260,7 +333,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser(prevUser => {
         if (!prevUser) return null;
-        return { ...prevUser, name: newName, displayName: newName };
+        const updatedU = { ...prevUser, name: newName, displayName: newName };
+        userRef.current = updatedU;
+        return updatedU;
       });
     } catch (error) {
       console.error("Error updating display name:", error);

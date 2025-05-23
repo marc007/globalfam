@@ -55,8 +55,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           lastSeen: serverTimestamp(),
         });
         setUser(currentUser => currentUser ? { ...currentUser, isOnline, lastSeen: new Date() } : null);
-      } catch (error) {
-        console.warn("Error updating online status:", error);
+      } catch (error: any) { // Added :any type for error to inspect it
+        console.warn("Error updating online status. UserID:", userRef.current?.uid, "Attempted to set isOnline:", isOnline);
+        console.warn("Error object type:", typeof error);
+        console.warn("Error object toString():", String(error));
+        if (error && typeof error === 'object') {
+          console.warn("Error object keys:", Object.keys(error).join(', ') || 'No enumerable keys');
+          console.warn("Error object JSON:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+        }
+        // If it is a FirebaseError, it should have code and message properties
+        if (error?.code && error?.message) {
+            console.warn(`Firebase Error Code: ${error.code}, Message: ${error.message}`);
+        } else {
+            console.warn("The error object does not appear to be a standard FirebaseError.");
+        }
       }
     }
   }, []);
@@ -66,7 +78,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(inactivityTimerRef.current);
     }
     if (userRef.current && userRef.current.isOnline === false && document.visibilityState === 'visible') {
-        // If user was marked offline due to inactivity but is now active
         updateUserOnlineStatus(true);
     }
     inactivityTimerRef.current = setTimeout(() => {
@@ -93,13 +104,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    // Add event listeners for user activity
     window.addEventListener('mousemove', handleActivity);
     window.addEventListener('keypress', handleActivity);
     window.addEventListener('scroll', handleActivity);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Initial timer reset
     resetInactivityTimer();
 
     return () => {
@@ -163,7 +172,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                  updatesForFirestore.avatarUrl = firebaseUser.photoURL;
             }
           }
-          if(Object.keys(updatesForFirestore).length > 2) { 
+          if(Object.keys(updatesForFirestore).length > 2) { // Check if there are updates beyond isOnline and lastSeen
             await updateDoc(userDocRef, updatesForFirestore).catch(err => console.warn("Error updating user doc on auth change", err));
           }
 
@@ -199,10 +208,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           };
         }
         setUser(appUser);
-        userRef.current = appUser; // Update ref here as well
-        resetInactivityTimer(); // Start tracking activity for the new user
+        userRef.current = appUser; 
+        resetInactivityTimer();
       } else {
-        if (userRef.current) { // If there was a user, mark them offline
+        if (userRef.current) { 
             updateUserOnlineStatus(false);
         }
         setUser(null);
@@ -218,6 +227,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         unsubscribe();
         if (inactivityTimerRef.current) {
             clearTimeout(inactivityTimerRef.current);
+        }
+        // Ensure user is marked offline if they close the tab/browser directly
+        if (userRef.current) {
+            updateUserOnlineStatus(false);
         }
     }
   }, [resetInactivityTimer, updateUserOnlineStatus]);
@@ -276,7 +289,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting user state and online status and resetting inactivity timer
       setIsLoading(false);
       return userCredential.user;
     } catch (error) {
@@ -291,7 +303,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
     }
-    await updateUserOnlineStatus(false); // Set offline before signing out
+    // Use userRef.current.uid for safety, as user state might be nullifying during async operations
+    if (userRef.current && userRef.current.uid) { 
+      await updateUserOnlineStatus(false);
+    } else {
+      console.warn("Logout: No user or user UID to mark offline. This might be normal if user was already signed out.");
+    }
     try {
       await firebaseSignOut(auth);
       router.push('/');

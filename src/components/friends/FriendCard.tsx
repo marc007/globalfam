@@ -19,6 +19,10 @@ const getInitials = (name?: string | null) => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase();
 };
 
+const isValidDate = (d: any) => {
+  return d instanceof Date && !isNaN(d.getTime());
+}
+
 export function FriendCard({ friend, onCardClick }: FriendCardProps) {
   const [borderColorClass, setBorderColorClass] = useState('border-muted-foreground');
   const [textColorClass, setTextColorClass] = useState('text-muted-foreground');
@@ -36,7 +40,6 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
       setBorderColorClass(randomChoice.border);
       setTextColorClass(randomChoice.text);
     } else {
-      // Offline or undefined status
       setBorderColorClass('border-muted-foreground');
       setTextColorClass('text-muted-foreground');
     }
@@ -56,6 +59,14 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
   const statusBadgeText = friend.isOnline === true ? "Vibing" : "Contemplating";
   const statusBadgeVariant = friend.isOnline === true ? "default" : "outline";
   const statusIndicatorColor = friend.isOnline === true ? "text-green-500" : "text-muted-foreground";
+
+  let statusTimeAgo = "Date unavailable";
+  if (friend.latestStatus?.timestamp) {
+    const date = new Date(friend.latestStatus.timestamp);
+    if (isValidDate(date)) {
+      statusTimeAgo = formatDistanceToNow(date, { addSuffix: true });
+    }
+  }
 
   return (
     <Card 
@@ -90,11 +101,13 @@ export function FriendCard({ friend, onCardClick }: FriendCardProps) {
           <div className="p-3 bg-background/50 rounded-lg border border-border/50">
             <div className="flex items-start text-sm text-foreground">
               <MessageSquare className="h-5 w-5 mr-2 mt-0.5 text-secondary flex-shrink-0" />
-              <p className="italic break-words">&ldquo;{friend.latestStatus.content}&rdquo;</p>
+              {/* Changed friend.latestStatus.content to friend.latestStatus.text */}
+              <p className="italic break-words">&ldquo;{friend.latestStatus.text}&rdquo;</p>
             </div>
             <div className="flex items-center text-xs text-muted-foreground mt-2">
               <CalendarDays className="h-3 w-3 mr-1.5" />
-              <span>{formatDistanceToNow(new Date(friend.latestStatus.createdAt), { addSuffix: true })}</span>
+              {/* Validated date before formatting */}
+              <span>{statusTimeAgo}</span>
             </div>
           </div>
         ) : (

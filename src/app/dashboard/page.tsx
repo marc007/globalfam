@@ -200,7 +200,7 @@ export default function DashboardPage() {
         <section className="md:col-span-2 space-y-6">
           <div className="flex items-center gap-2">
             <Users className="h-8 w-8 text-secondary" />
-            <h2 className="text-3xl font-semibold">Your Fam</h2>
+            <h2 className="text-3xl font-semibold">Your Mates</h2>
           </div>
           <FriendList friends={sortedFriends} onFriendCardClick={handleFriendCardClick} />
         </section>

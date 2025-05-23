@@ -21,7 +21,7 @@ export function AppHeader() {
   const router = useRouter();
 
   const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'GV'; // Changed from GF to GV
+    if (!name) return 'GV';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
@@ -29,9 +29,9 @@ export function AppHeader() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between">
         <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2 transition-transform hover:scale-105">
-          <Globe className="h-8 w-8 text-primary" /> {/* Using new primary color for icon */}
+          <Globe className="h-8 w-8 text-primary" />
           <span className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
-            GlobalVibe {/* Changed from GlobalFam */}
+            GlobalVibe
           </span>
         </Link>
         
@@ -71,10 +71,7 @@ export function AppHeader() {
                     <UserCircle className="mr-2 h-4 w-4" />
                     Profile
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push('/profile#location')}>
-                    <MapPin className="mr-2 h-4 w-4" />
-                    My Location
-                  </DropdownMenuItem>
+                  {/* Removed My Location DropdownMenuItem */}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} className="text-destructive focus:bg-destructive/30 focus:text-destructive-foreground">
                     <LogOut className="mr-2 h-4 w-4" />

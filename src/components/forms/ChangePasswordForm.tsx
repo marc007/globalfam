@@ -83,7 +83,8 @@ export function ChangePasswordForm() {
   }
 
   return (
-    <Card className="w-full max-w-lg shadow-lg bg-card/80 backdrop-blur-sm">
+    // Removed max-w-lg from this Card to allow full width
+    <Card className="w-full shadow-lg bg-card/80 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="flex items-center text-2xl text-primary">
           <KeyRound className="mr-2 h-6 w-6" /> Change Password

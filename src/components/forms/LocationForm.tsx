@@ -64,7 +64,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
 
   const autocompleteInputRef = useRef<HTMLInputElement>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
-  const places = useMapsLibrary('places'); // Use the hook to load the places library
+  const places = useMapsLibrary('places'); 
 
   useEffect(() => {
     if (places && autocompleteInputRef.current && !autocomplete) {
@@ -72,7 +72,6 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
         types: ['(regions)'], 
         fields: ['address_components', 'geometry', 'name'],
       };
-      // Initialize Autocomplete using the places library object
       const autocompleteInstance = new places.Autocomplete(
         autocompleteInputRef.current,
         options
@@ -109,7 +108,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
       });
       setAutocomplete(autocompleteInstance);
     }
-  }, [places, autocompleteInputRef, form, autocomplete]); // Depend on the places library
+  }, [places, autocompleteInputRef, form, autocomplete]); 
 
 
   async function onSubmit(data: LocationFormValues) {
@@ -127,7 +126,8 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
   }
 
   return (
-    <Card className="w-full max-w-lg shadow-lg bg-card/80 backdrop-blur-sm">
+    // Removed max-w-lg from this Card to allow full width
+    <Card className="w-full shadow-lg bg-card/80 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="flex items-center text-2xl text-primary">
           <MapPin className="mr-2 h-6 w-6" /> Update Your Location
@@ -151,7 +151,7 @@ export function LocationForm({ currentLocation, onUpdateLocation, isPending }: L
                       {...field}
                       ref={autocompleteInputRef}
                       className="bg-input"
-                      disabled={isPending || !places} // Disable if places library isn't loaded
+                      disabled={isPending || !places} 
                     />
                   </FormControl>
                   {!places && <FormDescription className="text-muted-foreground/70">Location search is initializing...</FormDescription>}

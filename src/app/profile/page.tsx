@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, ChangeEvent, useRef } from 'react';
+import { useEffect, useState, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { LocationForm } from '@/components/forms/LocationForm';
@@ -150,7 +150,7 @@ export default function ProfilePage() {
   };
 
   const getInitials = (name: string | null | undefined) => {
-    if (!name) return 'GV'; // Changed from GF to GV
+    if (!name) return 'GV'; 
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
@@ -194,7 +194,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 max-w-3xl mx-auto"> {/* Added max-w-3xl and mx-auto for better centering in single column */}
       <section className="flex flex-col items-center text-center">
         <label htmlFor="avatar-upload" className="cursor-pointer relative group mb-6">
           <Avatar key={displayPhotoURL || user.uid} className="h-32 w-32 border-4 border-primary shadow-lg relative">
@@ -243,11 +243,11 @@ export default function ProfilePage() {
               disabled={isSavingName}
             />
             <div className="flex gap-2 mt-2">
-              <Button onClick={handleSaveName} disabled={isSavingName || !editableName.trim() || editableName.trim() === (user.displayName || user.name)} className="bg-green-500 hover:bg-green-600 text-white">
+              <Button onClick={handleSaveName} disabled={isSavingName || !editableName.trim() || editableName.trim() === (user.displayName || user.name)} className="bg-green-500 hover:bg-green-600 text-white transition-transform hover:scale-105">
                 {isSavingName ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save
               </Button>
-              <Button variant="outline" onClick={() => setIsEditingName(false)} disabled={isSavingName}>
+              <Button variant="outline" onClick={() => setIsEditingName(false)} disabled={isSavingName} className="transition-transform hover:scale-105">
                 <X className="mr-2 h-4 w-4" />
                 Cancel
               </Button>
@@ -257,13 +257,14 @@ export default function ProfilePage() {
         <p className="text-lg text-muted-foreground mt-1">{user.email}</p>
       </section>
 
-      <div className="grid md:grid-cols-2 gap-8 items-start">
+      {/* Removed md:grid-cols-2 from this div, sections will now stack */}
+      <div className="space-y-8"> {/* Added space-y-8 for spacing between stacked sections */}
         <section id="location" className="space-y-8">
           {renderLocationForm()}
           <ChangePasswordForm />
         </section>
 
-        <section>
+        <section className="mt-8"> {/* Added mt-8 for consistent spacing */}
           <Card className="w-full shadow-lg bg-card/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="flex items-center text-2xl text-secondary">
@@ -288,7 +289,7 @@ export default function ProfilePage() {
                   <p className="text-muted-foreground">No location set. Update it using the form!</p>
                 )}
               </div>
-               <Button variant="destructive" onClick={logout} className="w-full mt-4">
+               <Button variant="destructive" onClick={logout} className="w-full mt-4 transition-transform hover:scale-105">
                 <LogOut className="mr-2 h-4 w-4" /> Log Out
               </Button>
             </CardContent>

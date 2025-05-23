@@ -17,40 +17,13 @@ interface MapDisplayProps {
 interface MapPinData {
   id: string;
   name: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   location: UserLocation;
   latestStatus?: StatusUpdate;
   position: { lat: number; lng: number };
   isCurrentUser: boolean;
   isOnline?: boolean; // Added to ensure it's part of the type for clarity
 }
-
-// Mock geocoding - replace with actual Google Geocoding API for production
-const geocodeLocation = async (city: string, country: string): Promise<{ lat: number; lng: number } | null> => {
-  // Simple hash to get pseudo-randomness for mock locations
-  let hash = 0;
-  for (let i = 0; i < (city + country).length; i++) {
-    const char = (city + country).charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0; // Convert to 32bit integer
-  }
-  const latNoise = ((hash % 1000) / 5000) - 0.1; 
-  const lngNoise = ((hash % 2000) / 10000) - 0.1;
-
-  await new Promise(resolve => setTimeout(resolve, 50 * Math.random()));
-
-  const cityLower = city.toLowerCase();
-  if (cityLower === "new york") return { lat: 40.7128 + latNoise, lng: -74.0060 + lngNoise };
-  if (cityLower === "london") return { lat: 51.5074 + latNoise, lng: -0.1278 + lngNoise };
-  if (cityLower === "tokyo") return { lat: 35.6895 + latNoise, lng: 139.6917 + lngNoise };
-  if (cityLower === "paris") return { lat: 48.8566 + latNoise, lng: 2.3522 + lngNoise };
-  if (cityLower === "sydney") return { lat: -33.8688 + latNoise, lng: 151.2093 + lngNoise };
-  
-  const lat = (hash % 180000) / 1000 - 90 + latNoise; 
-  const lng = (hash % 360000) / 1000 - 180 + lngNoise; 
-  return { lat , lng };
-};
-
 
 export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisplayProps) {
   const [mapPins, setMapPins] = useState<MapPinData[]>([]);
@@ -66,14 +39,11 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
       const newMapPins: MapPinData[] = [];
 
       for (const friend of friends) {
-        if (friend.location && (friend.location.city || (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number'))) {
+        if (friend.location && ((typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number'))) {
           let coords: { lat: number; lng: number } | null = null;
           if (typeof friend.location.latitude === 'number' && typeof friend.location.longitude === 'number') {
              coords = { lat: friend.location.latitude, lng: friend.location.longitude };
-          } else if (friend.location.city && friend.location.country) {
-            coords = await geocodeLocation(friend.location.city, friend.location.country);
-          }
-
+          } 
           if (coords) {
             newMapPins.push({
               ...friend,
@@ -91,10 +61,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
         let userCoords: { lat: number; lng: number } | null = null;
         if (typeof userLoc.latitude === 'number' && typeof userLoc.longitude === 'number') {
           userCoords = { lat: userLoc.latitude, lng: userLoc.longitude };
-        } else if (userLoc.city && userLoc.country) {
-          userCoords = await geocodeLocation(userLoc.city, userLoc.country);
-        }
-
+        } 
         if (userCoords) {
           currentUserPinData = {
             id: currentUser.uid,
@@ -121,10 +88,11 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
         if (currentUserPinData?.position && typeof currentUserPinData.position.lat === 'number' && typeof currentUserPinData.position.lng === 'number') {
             newCenter = currentUserPinData.position;
             newZoom = newMapPins.length === 1 ? 8 : 4; 
-        } else if (newMapPins.length > 0 && newMapPins[0]?.position && typeof newMapPins[0].position.lat === 'number' && typeof newMapPins[0].position.lng === 'number') {
-            newCenter = newMapPins[0].position;
-            newZoom = 3;
-        }
+        } 
+        //else if (newMapPins.length > 0 && newMapPins[0]?.position && typeof newMapPins[0].position.lat === 'number' && typeof newMapPins[0].position.lng === 'number') {
+        //    newCenter = newMapPins[0].position;
+        //    newZoom = 3;
+        //}
       }
       setInitialCenter(newCenter);
       setInitialZoom(newZoom);

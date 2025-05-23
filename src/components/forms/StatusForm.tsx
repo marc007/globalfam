@@ -22,8 +22,9 @@ import { addStatusUpdate } from "@/lib/firebase/statusUpdates";
 import { useAuth } from '@/contexts/AuthContext'; 
 import type { UserLocation } from "@/types";
 
+// Updated schema to use 'text' instead of 'content'
 const statusFormSchema = z.object({
-  content: z.string().min(1, { message: "Status can't be empty." }).max(280, { message: "Status must be 280 characters or less." }),
+  text: z.string().min(1, { message: "Status can't be empty." }).max(280, { message: "Status must be 280 characters or less." }),
 });
 
 type StatusFormValues = z.infer<typeof statusFormSchema>;
@@ -40,7 +41,7 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
   const form = useForm<StatusFormValues>({
     resolver: zodResolver(statusFormSchema),
     defaultValues: {
-      content: "",
+      text: "", // Updated default value field name
     },
   });
 
@@ -58,8 +59,8 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
       try {
         await addStatusUpdate({ 
           userId: user.uid, 
-          content: data.content,
-          location: user.currentLocation as UserLocation | undefined // Pass the user's current location
+          text: data.text, // Updated to use data.text
+          location: user.currentLocation as UserLocation | undefined 
         });
 
         toast({
@@ -93,7 +94,7 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
               control={form.control}
-              name="content"
+              name="text" // Updated FormField name
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-accent">Your Status</FormLabel>

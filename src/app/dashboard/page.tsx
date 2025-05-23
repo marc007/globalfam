@@ -7,17 +7,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { FriendList } from '@/components/friends/FriendList';
 import { MapDisplay } from '@/components/map/MapDisplay';
 import { StatusForm } from '@/components/forms/StatusForm';
-import type { Friend, UserLocation } from '@/types'; 
-import { Loader2, Users, Map as MapIcon, MessageSquare } from 'lucide-react';
+import type { Friend, StatusUpdate as StatusUpdateType, UserLocation } from '@/types'; // Renamed StatusUpdate to StatusUpdateType to avoid conflict
+import { Loader2, Users, Map as MapIcon, MessageSquare, History } from 'lucide-react';
 
 import { listenToUserProfile, UserProfile } from '@/lib/firebase/users'; 
-import { listenToLatestUserStatus, StatusUpdate } from '@/lib/firebase/statusUpdates'; 
+import { listenToLatestUserStatus, listenToUserStatusHistory, StatusUpdate } from '@/lib/firebase/statusUpdates'; // Import listenToUserStatusHistory
 import { Timestamp } from 'firebase/firestore';
+
+const PAST_STATUSES_LIMIT = 3; // Parameter for number of past statuses to fetch
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [pastStatuses, setPastStatuses] = useState<StatusUpdateType[]>([]); 
   const [isClient, setIsClient] = useState(false);
   const [activeListeners, setActiveListeners] = useState<(() => void)[]>([]);
   const [mapTargetView, setMapTargetView] = useState<{ center: {lat:number, lng:number}, zoom: number, key: number } | null>(null);
@@ -36,6 +39,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user?.uid) {
       setFriends([]);
+      setPastStatuses([]);
       activeListeners.forEach(unsub => unsub());
       setActiveListeners([]);
       return;
@@ -47,7 +51,6 @@ export default function DashboardPage() {
     const userProfileUnsub = listenToUserProfile(user.uid, (currentUserProfile) => {
       if (currentUserProfile?.friends) {
         const friendUids = currentUserProfile.friends;
-        
         setFriends(prevFriends => {
           const existingFriendsMap = new Map(prevFriends.map(f => [f.id, f]));
           const freshFriendsArray: Friend[] = [];
@@ -91,7 +94,7 @@ export default function DashboardPage() {
           });
           perFriendListeners.push(friendProfileUnsub);
 
-          const friendStatusUnsub = listenToLatestUserStatus(friendUid, (latestStatus: StatusUpdate | null) => {
+          const friendStatusUnsub = listenToLatestUserStatus(friendUid, (latestStatus: StatusUpdateType | null) => {
             setFriends(prevFriends =>
               prevFriends.map(f =>
                 f.id === friendUid
@@ -116,6 +119,12 @@ export default function DashboardPage() {
       }
     });
     newListeners.push(userProfileUnsub);
+
+    // Listener for user's past status updates
+    const userStatusHistoryUnsub = listenToUserStatusHistory(user.uid, PAST_STATUSES_LIMIT, (statuses) => {
+      setPastStatuses(statuses);
+    });
+    newListeners.push(userStatusHistoryUnsub);
 
     setActiveListeners(newListeners);
 
@@ -168,8 +177,8 @@ export default function DashboardPage() {
   const sortedFriends = [...friends].sort((a, b) => {
     const aOnline = a.isOnline === true;
     const bOnline = b.isOnline === true;
-    if (aOnline && !bOnline) return -1; // a comes first
-    if (!aOnline && bOnline) return 1;  // b comes first
+    if (aOnline && !bOnline) return -1;
+    if (!aOnline && bOnline) return 1;
     return (a.name || '').localeCompare(b.name || '');
   });
   
@@ -211,6 +220,31 @@ export default function DashboardPage() {
             <h2 className="text-3xl font-semibold">Share Your Vibe</h2>
           </div>
           <StatusForm onStatusPostedSuccess={handleCurrentUserStatusSuccess} /> 
+
+          <div className="mt-8 space-y-4">
+            <div className="flex items-center gap-2">
+              <History className="h-7 w-7 text-blue-400" /> 
+              <h3 className="text-2xl font-semibold">Past Vibes</h3>
+            </div>
+            {pastStatuses.length > 0 ? (
+              <ul className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                {pastStatuses.map((status, index) => (
+                  <li key={status.id || index} className="p-3 bg-muted rounded-lg shadow">
+                    <p className="text-sm font-medium">{status.text}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {status.location?.city}{status.location?.city && status.location?.country ? ', ' : ''}{status.location?.country}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {/* Ensure timestamp is valid before toLocaleString */}
+                      {status.timestamp && new Date(status.timestamp).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">No past status updates to show yet. Share a vibe!</p>
+            )}
+          </div>
         </section>
       </div>
     </div>

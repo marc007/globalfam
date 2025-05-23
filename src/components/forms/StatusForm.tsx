@@ -13,16 +13,15 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input"; 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Removed CardDescription from imports
 import { MessageSquare, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useTransition } from "react";
+import { useTransition, useRef } from "react"; 
 import { addStatusUpdate } from "@/lib/firebase/statusUpdates"; 
 import { useAuth } from '@/contexts/AuthContext'; 
 import type { UserLocation } from "@/types";
 
-// Updated schema to use 'text' instead of 'content'
 const statusFormSchema = z.object({
   text: z.string().min(1, { message: "Status can't be empty." }).max(280, { message: "Status must be 280 characters or less." }),
 });
@@ -37,11 +36,12 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const { user } = useAuth(); 
+  const submitButtonRef = useRef<HTMLButtonElement>(null); 
 
   const form = useForm<StatusFormValues>({
     resolver: zodResolver(statusFormSchema),
     defaultValues: {
-      text: "", // Updated default value field name
+      text: "", 
     },
   });
 
@@ -54,12 +54,13 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
       });
       return;
     }
+    if (isPending) return; 
 
     startTransition(async () => {
       try {
         await addStatusUpdate({ 
           userId: user.uid, 
-          text: data.text, // Updated to use data.text
+          text: data.text, 
           location: user.currentLocation as UserLocation | undefined 
         });
 
@@ -81,29 +82,41 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
     });
   }
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault(); 
+      const textValue = form.getValues("text");
+      if (!isPending && textValue && textValue.trim().length > 0) {
+         form.handleSubmit(onSubmit)();
+      }
+    }
+  };
+
   return (
     <Card className="w-full max-w-lg shadow-lg bg-card/80 backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="flex items-center text-2xl text-secondary">
-          <MessageSquare className="mr-2 h-6 w-6" /> What's Your Vibe?
+      {/* Added pb-3 to reduce space after removing CardDescription */}
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center text-xl text-secondary">
+          <MessageSquare className="mr-2 h-5 w-5" /> What's Your Vibe?
         </CardTitle>
-        <CardDescription>Share a quick update with your GlobalVibe!</CardDescription>
+        {/* CardDescription removed */}
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="text" // Updated FormField name
+              name="text"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-accent">Your Status</FormLabel>
+                  <FormLabel className="text-accent sr-only">Your Status</FormLabel> {/* Made label sr-only as title is descriptive enough */}
                   <FormControl>
-                    <Textarea
-                      placeholder="e.g., Exploring the streets of Rome! 🇮🇹"
-                      className="resize-none bg-input min-h-[100px]"
+                    <Input 
+                      placeholder="Share a quick vibe..."
+                      className="bg-input"
                       {...field}
                       disabled={isPending}
+                      onKeyDown={handleKeyDown} 
                     />
                   </FormControl>
                   <FormMessage />
@@ -111,17 +124,18 @@ export function StatusForm({ onStatusPostedSuccess }: StatusFormProps) {
               )}
             />
             <Button 
+              ref={submitButtonRef}
               type="submit" 
-              disabled={isPending}
-              className="w-full bg-gradient-to-r from-secondary to-pink-400 hover:from-secondary/90 hover:to-pink-400/90 text-secondary-foreground font-semibold py-3 text-lg transition-transform hover:scale-105"
+              disabled={isPending || !form.watch("text")?.trim()} 
+              className="w-full bg-gradient-to-r from-secondary to-pink-400 hover:from-secondary/90 hover:to-pink-400/90 text-secondary-foreground font-semibold py-2.5 text-md transition-transform hover:scale-105"
             >
               {isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Posting...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...
                 </>
               ) : (
                 <>
-                 <Send className="mr-2 h-5 w-5" /> Post Update
+                 <Send className="mr-2 h-4 w-4" /> Post Vibe
                 </>
               )}
             </Button>

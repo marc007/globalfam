@@ -7,14 +7,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { FriendList } from '@/components/friends/FriendList';
 import { MapDisplay } from '@/components/map/MapDisplay';
 import { StatusForm } from '@/components/forms/StatusForm';
-import type { Friend, StatusUpdate as StatusUpdateType, UserLocation } from '@/types'; // Renamed StatusUpdate to StatusUpdateType to avoid conflict
+import type { Friend, StatusUpdate as StatusUpdateType, UserLocation } from '@/types';
 import { Loader2, Users, Map as MapIcon, MessageSquare, History } from 'lucide-react';
 
 import { listenToUserProfile, UserProfile } from '@/lib/firebase/users'; 
-import { listenToLatestUserStatus, listenToUserStatusHistory, StatusUpdate } from '@/lib/firebase/statusUpdates'; // Import listenToUserStatusHistory
+import { listenToLatestUserStatus, listenToUserStatusHistory, StatusUpdate } from '@/lib/firebase/statusUpdates';
 import { Timestamp } from 'firebase/firestore';
 
-const PAST_STATUSES_LIMIT = 3; // Parameter for number of past statuses to fetch
+const PAST_STATUSES_LIMIT = 3;
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -120,7 +120,6 @@ export default function DashboardPage() {
     });
     newListeners.push(userProfileUnsub);
 
-    // Listener for user's past status updates
     const userStatusHistoryUnsub = listenToUserStatusHistory(user.uid, PAST_STATUSES_LIMIT, (statuses) => {
       setPastStatuses(statuses);
     });
@@ -205,8 +204,10 @@ export default function DashboardPage() {
         />
       </section>
       
-      <div className="grid md:grid-cols-3 gap-8 items-start">
-        <section className="md:col-span-2 space-y-6">
+      {/* Changed md:grid-cols-3 to md:grid-cols-2 */}
+      <div className="grid md:grid-cols-2 gap-8 items-start">
+        {/* Removed md:col-span-2 */}
+        <section className="space-y-6">
           <div className="flex items-center gap-2">
             <Users className="h-8 w-8 text-secondary" />
             <h2 className="text-3xl font-semibold">Your Mates</h2>
@@ -214,7 +215,8 @@ export default function DashboardPage() {
           <FriendList friends={sortedFriends} onFriendCardClick={handleFriendCardClick} />
         </section>
 
-        <section className="md:col-span-1 space-y-6 md:sticky md:top-24">
+        {/* Removed md:col-span-1; sticky behavior remains */}
+        <section className="space-y-6 md:sticky md:top-24">
            <div className="flex items-center gap-2">
             <MessageSquare className="h-8 w-8 text-green-400" />
             <h2 className="text-3xl font-semibold">Share Your Vibe</h2>
@@ -235,7 +237,6 @@ export default function DashboardPage() {
                       {status.location?.city}{status.location?.city && status.location?.country ? ', ' : ''}{status.location?.country}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {/* Ensure timestamp is valid before toLocaleString */}
                       {status.timestamp && new Date(status.timestamp).toLocaleString()}
                     </p>
                   </li>

@@ -229,8 +229,8 @@ export default function ProfilePage() {
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-secondary">
               {currentDisplayName || 'Your Profile'}
             </h1>
-            <Button variant="ghost" size="icon" onClick={() => { setIsEditingName(true); setEditableName(currentDisplayName || ""); }} className="opacity-0 group-hover:opacity-100 transition-opacity">
-              <Edit className="h-6 w-6 text-accent" />
+            <Button variant="ghost" size="icon" onClick={() => { setIsEditingName(true); setEditableName(currentDisplayName || ""); }} className="group-hover:opacity-100 transition-opacity">
+              <Edit className="h-6 w-6 text-accent group-hover:text-primary" />
             </Button>
           </div>
         ) : (

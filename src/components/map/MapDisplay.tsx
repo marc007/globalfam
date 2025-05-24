@@ -3,9 +3,10 @@
 
 import type { Friend, User, UserLocation, StatusUpdate } from '@/types';
 import React, { useState, useEffect, useRef } from 'react';
-import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
-import { Globe } from 'lucide-react';
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
+import { Globe, Expand } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface MapDisplayProps {
   friends: Friend[];
@@ -25,13 +26,40 @@ interface MapPinData {
   isOnline?: boolean; // Added to ensure it's part of the type for clarity
 }
 
+interface MapControlsProps {
+  mapPins: MapPinData[];
+}
+
+function MapControls({ mapPins }: MapControlsProps) {
+  const map = useMap();
+
+  const centerMapOnFriends = () => {
+    if (!map || mapPins.length === 0) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    mapPins.forEach(pin => {
+      bounds.extend(pin.position);
+    });
+
+    map.fitBounds(bounds);
+  };
+
+  return (
+    <div className="absolute top-4 right-4 z-10"> {/* Positioned and layered */}
+      <Button variant="default" size="icon" onClick={centerMapOnFriends}>
+         <Expand className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisplayProps) {
   const [mapPins, setMapPins] = useState<MapPinData[]>([]);
   const [selectedPin, setSelectedPin] = useState<MapPinData | null>(null);
 
   const [initialCenter, setInitialCenter] = useState({ lat: 20, lng: 0 });
   const [initialZoom, setInitialZoom] = useState(2);
-
+  
   const prevTargetViewKeyRef = useRef<number | undefined>();
 
   useEffect(() => {
@@ -101,7 +129,6 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
     fetchMapPins();
   }, [friends, currentUser, targetView]); 
 
-
   if (!apiKey) {
     return (
       <Card className="bg-muted/30 border-dashed border-destructive">
@@ -123,7 +150,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
   }
 
   return (
-    <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border">
+    <div className="h-[500px] w-full rounded-lg overflow-hidden shadow-lg border border-border relative"> {/* Added relative positioning */}
       <APIProvider apiKey={apiKey} libraries={['places', 'marker']}>
         <Map
           key={`${initialCenter.lat}-${initialCenter.lng}-${initialZoom}-${targetView?.key || 'default'}`} 
@@ -194,6 +221,7 @@ export function MapDisplay({ friends, apiKey, currentUser, targetView }: MapDisp
               </div>
             </InfoWindow>
           )}
+          <MapControls mapPins={mapPins} />
         </Map>
       </APIProvider>
     </div>

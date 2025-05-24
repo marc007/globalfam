@@ -20,6 +20,7 @@ export interface UserProfile {
   createdAt?: Timestamp;
   friends?: string[]; // Array of friend UIDs
   currentLocation?: UserLocation | null; // Added currentLocation
+  isOnline?: boolean; // Added isOnline
   // Add other fields like status, etc. as needed
 }
 
